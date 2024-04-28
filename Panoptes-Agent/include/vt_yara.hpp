@@ -4,7 +4,7 @@
 #include "utils.hpp"
 #include <wchar.h>
 
-#define RULES_FOLDER L"C:\\Users\\Research\\source\\repos\\Test-Yara\\rules-master\\rules-master"
+#define RULES_FOLDER L"yara-rules"
 
 class vt_yara
 {

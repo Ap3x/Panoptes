@@ -26,7 +26,6 @@ jobs:
       run: |
         Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2128854 -OutFile wdk.exe
         .\wdk.exe /features + /installpath "C:\WDK" /quiet
-        Remove-Item wdk.exe
 
     - name: Build with CMake
       run: cmake -G Ninja .

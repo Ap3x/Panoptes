@@ -22,10 +22,16 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Install Visual Studio Build Tools
+      uses: microsoft/setup-msbuild@v1.1
+
     - name: Install WDK
       run: |
         Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2128854 -OutFile wdk.exe
         .\wdk.exe /features + /installpath "C:\WDK" /quiet
+
+    - name: Install Ninja
+      run: choco install ninja
 
     - name: Build with CMake
       run: cmake -G Ninja .

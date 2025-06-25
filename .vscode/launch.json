@@ -1,0 +1,41 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Panoptes Yara Test",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/tests/Debug/Test_PanoptesYara.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/tests/Debug/",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Panoptes Service",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/PanoptesService.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Panoptes Container With Yara",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/PanoptesContainer.exe",
+            "args": ["${workspaceFolder}/bin/Debug/ext/PanoptesYara.dll"],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/",
+            "console": "integratedTerminal"
+        }
+    ]
+}

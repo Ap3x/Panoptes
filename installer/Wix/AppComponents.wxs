@@ -1,0 +1,47 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <ComponentGroup Id="AppComponents" Directory="Extensibility">
+      <File Source="PanoptesAMSI.dll" />
+      <File Source="PanoptesPE.dll" />
+      <File Source="PanoptesYara.dll" />
+    </ComponentGroup>
+    <ComponentGroup Id="MainComponents" Directory="INSTALLFOLDER">
+      <File Source="PanoptesSetup.exe" />
+      <File Source="PanoptesService.exe" Id="PanoptesMain" />
+      <File Source="PanoptesContainer.exe" />
+      <File Source="rules.pkg" />
+      <File Source="PanoptesDLLx64.dll" />
+      <File Source="PanoptesDLLx86.dll" />
+      <File Source="Resources.dll" />
+      <File Source="panoptes.config" />
+    </ComponentGroup>
+    <ComponentGroup Id="ToolsComponents" Directory="Tools">
+      <File Source="PanoptesLinter.exe" />
+      <File Source="PanoptesScan.exe" />
+      <File Source="PanoptesScanCLI.exe" />
+    </ComponentGroup>
+    <ComponentGroup Id="DriverComponents" Directory="DriverFolder">
+      <File Source="Panoptes.sys" />
+      <File Source="Panoptes.inf" />
+      <File Source="panoptes.cat" />
+      <File Source="Panoptes.cer" />
+    </ComponentGroup>
+    <ComponentGroup Id="AssetsComponents" Directory="Assets">
+      <File Source="panoptes-head.ico" />
+      <File Source="LICENSE.rtf" />
+    </ComponentGroup>
+    <ComponentGroup Id="DataComponents" Directory="DataFolder">
+      <File Source="Panoptes.config" />
+    </ComponentGroup>
+    <Component Id="ApplicationShortcut" Directory="DesktopFolder">
+      <Shortcut Id="ApplicationStartMenuShortcut"
+                Name="Panoptes"
+                Description="Panoptes Endpoint Detection and Response"
+                Directory="DesktopFolder"
+                Target="[INSTALLFOLDER]PanoptesService.exe"
+                WorkingDirectory="INSTALLFOLDER"/>
+      <RemoveFolder Id="CleanUpShortCut" Directory="DesktopFolder" On="uninstall"/>
+      <RegistryValue Root="HKCU" Key="Software\Ap3x\Panoptes" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+    </Component>
+  </Fragment>
+</Wix>

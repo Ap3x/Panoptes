@@ -1,0 +1,34 @@
+﻿<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+	<Package Name="Panoptes" Manufacturer="Ap3x" Version="1.0.0.0" UpgradeCode="01d301d0-59c1-4911-ab67-27eb2db172f3">
+    <MediaTemplate EmbedCab="yes" />
+    <MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" />
+		<Feature Id="Main">
+      <ComponentGroupRef Id="AppComponents" />
+      <ComponentGroupRef Id="MainComponents" />
+      <ComponentGroupRef Id="ToolsComponents" />
+      <ComponentGroupRef Id="DriverComponents" />
+      <ComponentGroupRef Id="AssetsComponents" />
+      <ComponentGroupRef Id="DataComponents" />
+      <ComponentRef Id="ApplicationShortcut" />
+		</Feature>
+
+		<Icon Id="MainIcon" SourceFile="assets\installicon.ico"/>
+		<WixVariable Id="WixUISupportPerUser" Value="1" />
+		<WixVariable Id="WixUIBannerBmp" Value="assets\banner-edited.bmp" />
+		<WixVariable Id="WixUIDialogBmp" Value="assets\dialog.bmp" />
+		<WixVariable Id="WixUILicenseRtf" Value="assets\LICENSE.rtf" />
+		<Launch Condition="VersionNT64" Message="Panoptes is only supported on 64-bit systems" />
+    <InstallExecuteSequence>
+      <Custom Action="InstallDriver" Before='InstallFinalize' Condition='NOT REMOVE'/>
+      <Custom Action="UninstallDriver" After='InstallInitialize' Condition='Installed'/>
+    </InstallExecuteSequence>
+		<UI>
+			<Property Id="ARPPRODUCTICON" Value="MainIcon" />
+			<Property Id="WixAppFolder" Value="WixPerMachineFolder" />
+			<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER"/>
+      <!--<Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>-->
+      <!--<Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Panoptes"/>-->
+      <!--<Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed"/>-->
+		</UI>
+	</Package>
+</Wix>

@@ -1,0 +1,42 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "description": "Debug build using vcpkg",
+            "generator": "Visual Studio 17 2022",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+                "CMAKE_PREFIX_PATH": "vcpkg_installed/x64-windows-static",
+                "Protobuf_PROTOC_EXECUTABLE": "vcpkg_installed/x64-windows-static/tools/protobuf/protoc.exe",
+                "gRPC_DIR": "vcpkg_installed/x64-windows-static/share/grpc",
+                "nlohmann_json_DIR": "vcpkg_installed/x64-windows-static/share/nlohmann_json",
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug",
+                "x86_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86/",
+                "x64_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release",
+            "description": "Release build using vcpkg",
+            "generator": "Visual Studio 17 2022",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+                "CMAKE_PREFIX_PATH": "vcpkg_installed/x64-windows-static",
+                "Protobuf_PROTOC_EXECUTABLE": "vcpkg_installed/x64-windows-static/tools/protobuf/protoc.exe",
+                "gRPC_DIR": "vcpkg_installed/x64-windows-static/share/grpc",
+                "nlohmann_json_DIR": "vcpkg_installed/x64-windows-static/share/nlohmann_json",
+                "x86_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86/",
+                "x64_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
+            }
+        }
+    ]
+} 

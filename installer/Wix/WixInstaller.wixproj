@@ -1,0 +1,52 @@
+﻿<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <OutputName>PanoptesInstaller</OutputName>
+    <Configurations>Release</Configurations>
+    <IncludeSearchPaths>
+    </IncludeSearchPaths>
+    <Platforms>x86;x64</Platforms>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <BindFiles>false</BindFiles>
+    <OutputPath>..\..\bin\$(Platform)\$(Configuration)\installer\</OutputPath>
+    <DefineConstants>
+    </DefineConstants>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutputPath>$(SolutionDir)\bin\$(Platform)\$(Configuration)\Package</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x86'">
+    <OutputPath>$(SolutionDir)\bin\$(Platform)\$(Configuration)\Package</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x86'">
+    <OutputPath>..\..\bin\Win32\Release\Package\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <BindPath Include="$(SolutionDir)assets\yara" />
+    <BindPath Include="$(SolutionDir)bin\bin\x64\Release\driver\PanoptesDriver" />
+    <BindPath Include="$(SolutionDir)src\libraries\TrayNotificationsCore\assets" />
+    <BindPath Include="$(SolutionDir)bin\x64\Release" />
+    <BindPath Include="$(SolutionDir)bin\Win32\Release" />
+    <BindPath Include="$(SolutionDir)assets" />
+    <BindPath Include="$(ProjectDir)assets" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\container\PanoptesContainer.vcxproj" />
+    <ProjectReference Include="..\..\src\dll\PanoptesDLL.vcxproj" />
+    <ProjectReference Include="..\..\src\driver\PanoptesDriver.vcxproj" />
+    <ProjectReference Include="..\..\src\extensibility\PanoptesAMSI\PanoptesAMSI.vcxproj" />
+    <ProjectReference Include="..\..\src\extensibility\PanoptesPE\PanoptesPE.vcxproj" />
+    <ProjectReference Include="..\..\src\extensibility\PanoptesYara\PanoptesYara.vcxproj" />
+    <ProjectReference Include="..\..\src\libraries\ResourceCore\Resources.vcxproj" />
+    <ProjectReference Include="..\..\src\linter\PanoptesLinter.vcxproj" />
+    <ProjectReference Include="..\..\src\scanner\PanoptesScanCLI\PanoptesScanCLI.vcxproj" />
+    <ProjectReference Include="..\..\src\scanner\PanoptesScan\PanoptesScan.vcxproj" />
+    <ProjectReference Include="..\..\src\service\PanoptesService.vcxproj" />
+    <ProjectReference Include="..\Setup\PanoptesSetup.vcxproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <Binary Id="PanoptesSetup" SourceFile="PanoptesSetup.exe"/>
+    <CustomAction Id="InstallDriver"  Execute="deferred" Impersonate="no" BinaryRef="PanoptesSetup" ExeCommand=' --install' Return="check" />
+    <CustomAction Id="UninstallDriver"  Execute="deferred" Impersonate="no" BinaryRef="PanoptesSetup" ExeCommand=' --uninstall' Return="check" />
+    <!--<CustomAction Id="LaunchApplication" Execute="deferred" Impersonate="no" FileRef="PanoptesMain" ExeCommand='' Return="ignore"/>-->
+  </Fragment>
+</Wix>

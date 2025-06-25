@@ -1,0 +1,3 @@
+add_subdirectory(PanoptesAMSI)
+add_subdirectory(PanoptesPE)
+add_subdirectory(PanoptesYara)

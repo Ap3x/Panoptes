@@ -1,0 +1,189 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0" version="26.1.3">
+  <diagram id="7UfbK1xABAdgq6NYzNfo" name="Overview">
+    <mxGraphModel dx="2388" dy="1268" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="CXB1Ufp8fhSvT8PdVjaL-11" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" parent="1" vertex="1">
+          <mxGeometry x="68" y="874" width="448" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="NIKRk4tpLupUHJwbM1dF-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 1;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=alternate;flowAnimationTimingFunction=linear;flowAnimationDuration=2000;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" target="11LjAQhsMhpzE4_2Gh9C-16" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="303" y="655" />
+              <mxPoint x="-196" y="655" />
+              <mxPoint x="-196" y="729" />
+            </Array>
+            <mxPoint x="75" y="450" as="sourcePoint" />
+            <mxPoint x="-45" y="726" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="CXB1Ufp8fhSvT8PdVjaL-16" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" parent="1" vertex="1">
+          <mxGeometry x="-74" y="479" width="305" height="127" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-56" value="" style="group" parent="1" vertex="1" connectable="0">
+          <mxGeometry x="447" y="263" width="168" height="214" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-60" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=3;flowAnimation=0;flowAnimationDuration=1000;exitX=1;exitY=0.25;exitDx=0;exitDy=0;" parent="2Nh9rb_-xzqOD59swjkN-56" source="2Nh9rb_-xzqOD59swjkN-32" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="37" y="136" />
+            </Array>
+            <mxPoint x="-65" y="266.01234567901224" as="sourcePoint" />
+            <mxPoint x="37" y="82" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-54" value="" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/files-67/240/timestamps_log_types_documents-64.png;" parent="2Nh9rb_-xzqOD59swjkN-56" vertex="1">
+          <mxGeometry x="7.25" width="69" height="69" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-52" value="Log File" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/files-67/240/timestamps_log_types_documents-64.png;" parent="2Nh9rb_-xzqOD59swjkN-56" vertex="1">
+          <mxGeometry y="13" width="69" height="69" as="geometry" />
+        </mxCell>
+        <mxCell id="11LjAQhsMhpzE4_2Gh9C-8" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes User Mode Hooks&lt;br&gt;&lt;/h1&gt;&lt;div&gt;The user mode hook DLLs utilize Microsoft Detours to hook common malicious Windows API. Depending on the Windows API other actions will be performed such as memory scanning checks and handle checks. When a malicious event is identified then the event is written to ETW.&lt;br&gt;&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" parent="1" vertex="1">
+          <mxGeometry x="-351" y="832" width="330" height="126" as="geometry" />
+        </mxCell>
+        <mxCell id="11LjAQhsMhpzE4_2Gh9C-16" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" parent="1" vertex="1">
+          <mxGeometry x="-322" y="729" width="251" height="103" as="geometry" />
+        </mxCell>
+        <mxCell id="11LjAQhsMhpzE4_2Gh9C-15" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" parent="1" vertex="1">
+          <mxGeometry x="68" y="729" width="445" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="11LjAQhsMhpzE4_2Gh9C-14" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" parent="1" vertex="1">
+          <mxGeometry x="-79" y="202" width="307.5" height="126" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-62" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;dashed=1;dashPattern=1 4;flowAnimation=1;" parent="1" source="2Nh9rb_-xzqOD59swjkN-35" target="2Nh9rb_-xzqOD59swjkN-28" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-63" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;dashed=1;dashPattern=1 4;flowAnimation=1;" parent="1" source="2Nh9rb_-xzqOD59swjkN-40" target="2Nh9rb_-xzqOD59swjkN-36" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-10" value="" style="endArrow=none;dashed=1;html=1;rounded=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-318" y="187" as="sourcePoint" />
+            <mxPoint x="808" y="193" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-28" value="Panoptes Container" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" parent="1" vertex="1">
+          <mxGeometry x="111.75" y="732" width="76.5" height="76.5" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-43" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 1;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=alternate;flowAnimationTimingFunction=linear;flowAnimationDuration=2000;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" target="2Nh9rb_-xzqOD59swjkN-28" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="322" y="666" />
+              <mxPoint x="149" y="666" />
+              <mxPoint x="149" y="732" />
+            </Array>
+            <mxPoint x="814.25" y="339" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-44" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 1;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=alternate;flowAnimationTimingFunction=linear;flowAnimationDuration=2000;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" target="2Nh9rb_-xzqOD59swjkN-36" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="814.25" y="339" as="sourcePoint" />
+            <Array as="points">
+              <mxPoint x="341" y="679" />
+              <mxPoint x="289" y="679" />
+              <mxPoint x="289" y="732" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-45" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 1;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=alternate;flowAnimationTimingFunction=linear;flowAnimationDuration=2000;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" target="CXB1Ufp8fhSvT8PdVjaL-7" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="360" y="678" />
+              <mxPoint x="430" y="678" />
+              <mxPoint x="430" y="734" />
+            </Array>
+            <mxPoint x="341.25" y="455.25" as="sourcePoint" />
+            <mxPoint x="479.02127659574444" y="733" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-61" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=12 12;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=reverse;flowAnimationTimingFunction=linear;flowAnimationDuration=1000;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" target="nqpikjvwoDamXcm8Fm9y-3" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="347.2285714285713" y="384.75" as="sourcePoint" />
+            <mxPoint x="327" y="3" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-32" value="Panoptes Service" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" parent="1" vertex="1">
+          <mxGeometry x="303" y="379.75" width="76.5" height="76.5" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-33" value="x86 API Hooking " style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" parent="1" vertex="1">
+          <mxGeometry x="-163.99655172413804" y="738.2503448275863" width="64" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-34" value="x86_64 API Hooking " style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" parent="1" vertex="1">
+          <mxGeometry x="-287.99655172413804" y="738.2503448275863" width="64" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-35" value="Panoptes &#xa;AMSI Scan&#xa;(PAmsi)" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" parent="1" vertex="1">
+          <mxGeometry x="118.00344827586207" y="885.0003448275863" width="64" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-36" value="Panoptes Container" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" parent="1" vertex="1">
+          <mxGeometry x="250.25" y="732" width="76.5" height="76.5" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-40" value="Panoptes &#xa;Yara Scan&#xa;(PYara)" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" parent="1" vertex="1">
+          <mxGeometry x="256.50344827586207" y="885.0003448275863" width="64" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-47" value="Panoptes  Linter" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" parent="1" vertex="1">
+          <mxGeometry x="-45" y="215.03" width="76.5" height="76.5" as="geometry" />
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-67" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.25;entryDx=0;entryDy=0;strokeWidth=3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="2Nh9rb_-xzqOD59swjkN-66" target="2Nh9rb_-xzqOD59swjkN-32" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="248" y="257" />
+              <mxPoint x="248" y="399" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-66" value="Configuration" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn0.iconfinder.com/data/icons/leto-file-formats/64/json_javascript_file_format-64.png;" parent="1" vertex="1">
+          <mxGeometry x="115.51" y="216" width="79.43" height="79.43" as="geometry" />
+        </mxCell>
+        <mxCell id="11LjAQhsMhpzE4_2Gh9C-7" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Container&lt;br&gt;&lt;/h1&gt;Acts as a surrogate for the Panoptes Extensibility DLLs and communicate back to the Panoptes Service of the results from the scan." style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;" parent="1" vertex="1">
+          <mxGeometry x="526" y="729" width="239" height="159" as="geometry" />
+        </mxCell>
+        <mxCell id="11LjAQhsMhpzE4_2Gh9C-9" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Linter&lt;br&gt;&lt;/h1&gt;The linter ensures that the supplied Panoptes JSON configuration has all the correct fields and required data to begin operation." style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" parent="1" vertex="1">
+          <mxGeometry x="-351" y="209" width="234" height="112" as="geometry" />
+        </mxCell>
+        <mxCell id="TchyhdvWaHZOWy362Ce8-2" value="Panoptes Scanner&#xa;" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" parent="1" vertex="1">
+          <mxGeometry x="-45" y="491" width="76.5" height="76.5" as="geometry" />
+        </mxCell>
+        <mxCell id="4dgLIrs-NOxHsrDhryPH-1" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Kernel Driver&lt;br&gt;&lt;/h1&gt;The filesystem filter driver is able to listen to specific file system events such as file creation, handles, file delete, ect. In addition, the driver is subscribed to system kernel call backs to monitor process creation, loading of images, and registry changes. The driver is an ETW provider and writes all events to ETW." style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="427" y="31" width="312" height="152" as="geometry" />
+        </mxCell>
+        <mxCell id="4dgLIrs-NOxHsrDhryPH-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.75;entryDx=0;entryDy=0;strokeWidth=3;startArrow=classic;startFill=1;" parent="1" source="4dgLIrs-NOxHsrDhryPH-5" target="2Nh9rb_-xzqOD59swjkN-32" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="4dgLIrs-NOxHsrDhryPH-5" value="RocksDB Databse " style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=data:image/png,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;strokeWidth=3;" parent="1" vertex="1">
+          <mxGeometry x="34.96" y="359.21" width="79.58" height="79.58" as="geometry" />
+        </mxCell>
+        <mxCell id="11LjAQhsMhpzE4_2Gh9C-10" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Service&lt;br&gt;&lt;/h1&gt;&lt;div&gt;The Panoptes Service is the main brain to the whole operation. The service consumes the Kernel Driver Events in real time and sends specific events to each of the Panoptes Containers. The service communicates containers via Protocol Buffers. Real time events are then forwarded to the containers for scanning for anything that is known malicious.&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" parent="1" vertex="1">
+          <mxGeometry x="400" y="428" width="352" height="148" as="geometry" />
+        </mxCell>
+        <mxCell id="4dgLIrs-NOxHsrDhryPH-7" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes RocksDB&lt;br&gt;&lt;/h1&gt;Panoptes stores a hash value and information about each file. The information stored includes scan results and basic file info" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" parent="1" vertex="1">
+          <mxGeometry x="-351" y="348" width="258" height="102" as="geometry" />
+        </mxCell>
+        <mxCell id="nqpikjvwoDamXcm8Fm9y-3" value="Panoptes Kernel Driver&#xa;(Main Driver)" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn4.iconfinder.com/data/icons/it-components-2/24/microchip_processor_chip_cpu-64.png;" parent="1" vertex="1">
+          <mxGeometry x="315.50034482758633" y="75.00068965517244" width="64" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="nqpikjvwoDamXcm8Fm9y-11" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Extensibility &lt;/h1&gt;&lt;div&gt;Each module provides Panoptes with a method of identifying malicious files and processes on the system.&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;" parent="1" vertex="1">
+          <mxGeometry x="526" y="902" width="264" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="nqpikjvwoDamXcm8Fm9y-14" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Log Files&lt;br&gt;&lt;/h1&gt;&lt;div&gt;The log files contains parsable JSON events on each line containing information from the containers and their respective extensibility along with insights into Panoptes Service &lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" parent="1" vertex="1">
+          <mxGeometry x="537" y="241.21" width="215" height="157.25" as="geometry" />
+        </mxCell>
+        <mxCell id="CXB1Ufp8fhSvT8PdVjaL-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;dashed=1;dashPattern=1 4;flowAnimation=1;" parent="1" source="CXB1Ufp8fhSvT8PdVjaL-8" target="CXB1Ufp8fhSvT8PdVjaL-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="CXB1Ufp8fhSvT8PdVjaL-7" value="Panoptes Container" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" parent="1" vertex="1">
+          <mxGeometry x="392" y="734" width="76.5" height="76.5" as="geometry" />
+        </mxCell>
+        <mxCell id="CXB1Ufp8fhSvT8PdVjaL-8" value="Panoptes &#xa;PE Scan&#xa;(PPE)" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" parent="1" vertex="1">
+          <mxGeometry x="398.25344827586207" y="887.0003448275863" width="64" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="CXB1Ufp8fhSvT8PdVjaL-14" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes  Scanner&lt;br&gt;&lt;/h1&gt;&lt;p&gt;The Panoptes scanner tools allows the user to scan files using the command line interface or via a right click on the context menu.&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" parent="1" vertex="1">
+          <mxGeometry x="-351" y="478.99999999999994" width="268" height="126" as="geometry" />
+        </mxCell>
+        <mxCell id="CXB1Ufp8fhSvT8PdVjaL-15" value="Panoptes CLI Scanner&#xa;" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" parent="1" vertex="1">
+          <mxGeometry x="116.97" y="491" width="76.5" height="76.5" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

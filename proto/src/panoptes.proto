@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+enum ContainerType {
+  CONTAINER_TYPE_NONE = 0;
+  CONTAINER_TYPE_AMSI = 10;
+  CONTAINER_TYPE_PE = 20;
+  CONTAINER_TYPE_YARA = 30;
+}
+
+enum AckType {
+  FAILED = 0;
+  SUCCESS = 1;
+}
+
+message AckMessage {
+	AckType ack_type = 1;
+	string message = 2;
+}
+
+message ScanAMSI {
+	uint32 amsi_result = 1;
+}
+
+message ScanPE {
+	bool signed = 3;
+	string signer = 4;
+	repeated string imports = 5;
+	repeated string sections = 6;
+	repeated double section_entropy = 7;
+}
+
+message ScanYara {
+	repeated string detected_rules = 1;
+}
+
+message ContainerReply {
+	string portable_executable_path = 1;
+	string file_hash = 2;
+	oneof container_event_reply {
+		ScanAMSI amsi_scan = 3;
+		ScanPE pe_scan = 4;
+		ScanYara yara_scan = 5;
+	}
+}
+
+message ContainerInfo {
+	ContainerType container_type = 1;
+	uint32 grpc_port = 2;
+}
+
+message PeScanInfo {
+	string portable_executable_path = 1;
+	string file_hash = 2;
+}
+
+message MemoryScanInfo {
+	uint32 process_id = 1;
+}
+
+message HealthCheckRequest {
+	bool ping = 1;
+}
+
+message HealthCheckResponse {
+	bool pong = 1;
+}
+
+
+service PanoptesService {
+  rpc Hello(ContainerInfo) returns (AckMessage) {}
+  rpc ScanResults(ContainerReply) returns (AckMessage) {}
+  rpc QueuePeScan(PeScanInfo) returns (AckMessage) {}
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
+
+}
+
+service PanoptesExtensibility {
+  rpc PEScan(PeScanInfo) returns (AckMessage) {}
+  rpc MemoryScan(MemoryScanInfo) returns (AckMessage) {}
+}

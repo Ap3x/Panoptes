@@ -1,0 +1,14 @@
+{
+  "dependencies": [
+    "detours",
+    {
+      "name": "grpc",
+      "version>=": "1.71.0"
+    },
+    {
+      "name": "rocksdb",
+      "version>=": "10.2.1"
+    },
+    "nlohmann-json"
+  ]
+}

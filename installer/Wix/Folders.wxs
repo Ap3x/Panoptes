@@ -1,0 +1,17 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+	<Fragment>
+		<StandardDirectory Id="ProgramFiles6432Folder">
+			<Directory Id="INSTALLFOLDER" Name="!(bind.Property.ProductName)">
+        <Directory Id="DriverFolder" Name="driver"></Directory>
+        <Directory Id="Extensibility" Name="ext"></Directory>
+        <Directory Id="Tools" Name="tools"></Directory>
+        <Directory Id="Assets" Name="assets"></Directory>
+			</Directory>
+		</StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataFolder" Name="!(bind.Property.ProductName)"/>
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder">
+    </StandardDirectory>
+	</Fragment>
+</Wix>

@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(BUILD_DOC "Build documentation" OFF)
 option(BUILD_WIX_INSTALLER "Build Wix installer package" OFF)
 option(BUILD_DRIVER "Build driver package" OFF)
-option(BUILD_GRPC "Generate gRPC code" OFF)
+option(BUILD_GRPC "Generate gRPC code" ON)
 
 find_package(Doxygen)
 if (DOXYGEN_FOUND AND BUILD_DOC)
@@ -27,46 +27,9 @@ elseif(DOXYGEN_FOUND AND NOT BUILD_DOC)
     message("Doxygen needs to be installed to generate the doxygen documentation")
 endif(DOXYGEN_FOUND AND BUILD_DOC)
 
-if(BUILD_GRPC)
-    find_package(Protobuf CONFIG REQUIRED)
-    find_package(gRPC CONFIG REQUIRED)
 
-    # Set proto file path
-    set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/src/panoptes.proto")
-    set(PROTO_BUILD_DIR "${CMAKE_SOURCE_DIR}/proto/build")
-
-    # Create build directory if it doesn't exist
-    file(MAKE_DIRECTORY ${PROTO_BUILD_DIR})
-
-    # Generate gRPC code
-    add_custom_command(
-        OUTPUT 
-            "${PROTO_BUILD_DIR}/panoptes.pb.cc"
-            "${PROTO_BUILD_DIR}/panoptes.pb.h"
-            "${PROTO_BUILD_DIR}/panoptes.grpc.pb.cc"
-            "${PROTO_BUILD_DIR}/panoptes.grpc.pb.h"
-        COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-        --grpc_out "${PROTO_BUILD_DIR}"
-        --cpp_out "${PROTO_BUILD_DIR}"
-        -I "${CMAKE_SOURCE_DIR}/proto/src"
-        --plugin=protoc-gen-grpc="$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
-        "${PROTO_FILE}"
-        DEPENDS "${PROTO_FILE}"
-        COMMENT "Generating gRPC code from ${PROTO_FILE}"
-    )
-
-    # Create a custom target for the generated files
-    add_custom_target(generate_protos ALL
-        DEPENDS 
-            "${PROTO_BUILD_DIR}/panoptes.pb.cc"
-            "${PROTO_BUILD_DIR}/panoptes.pb.h"
-            "${PROTO_BUILD_DIR}/panoptes.grpc.pb.cc"
-            "${PROTO_BUILD_DIR}/panoptes.grpc.pb.h"
-    )
-endif()
-
-add_subdirectory(src/libraries)
 add_subdirectory(src/service)
+add_subdirectory(src/libraries)
 
 add_subdirectory(src/extensibility)
 add_subdirectory(src/container)

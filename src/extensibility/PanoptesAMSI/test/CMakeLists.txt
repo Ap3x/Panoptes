@@ -17,28 +17,67 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
+set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/src/panoptes.proto")
+
 set(SOURCES
     "Test_PanoptesAMSI.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/service_client_amsi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/amsi-scan.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../proto/build/panoptes.grpc.pb.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../proto/build/panoptes.pb.cc"
+    ${PROTO_FILE}
 )
 
 set(HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/../include/PanoptesAMSI.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../shared/ExtensibilityCore.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../proto/build/panoptes.grpc.pb.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../proto/build/panoptes.pb.h"
 )
 
 add_executable(Test_PanoptesAMSI ${SOURCES} ${HEADERS})
+
+if(BUILD_GRPC)
+    find_package(gRPC CONFIG REQUIRED)
+
+    # Set proto file path
+    set(PROTO_FILE_DIR "${CMAKE_SOURCE_DIR}/proto/src/")
+    set(PROTO_BUILD_DIR "${CMAKE_SOURCE_DIR}/proto/build")
+
+    # Create build directory if it doesn't exist
+    file(MAKE_DIRECTORY ${PROTO_BUILD_DIR})
+
+    message("   --> PROTOBUF LIB: ${PROTOBUF_LIBRARIES}")
+    message("   --> PROTOBUF INCLUDE: ${Protobuf_INCLUDE_DIRS}")
+    message("   --> PROTOBUF VERSION: ${Protobuf_VERSION}")
+    message("   --> PROTOBUF Found: ${Protobuf_FOUND}")
+    message("   --> PROTOBUF SRC: ${PROTO_SRC}")
+    message("   --> PROTOBUF HEADER: ${PROTO_HEADER}")
+    message("   --> PROTOBUF Folder: ${CMAKE_BINARY_DIR}/proto")
+    
+    target_link_libraries(${PROJECT_NAME} PUBLIC protobuf::libprotobuf gRPC::grpc++)
+    
+    set(PROTO_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    
+    protobuf_generate(
+        TARGET ${PROJECT_NAME}
+        IMPORT_DIRS ${PROTO_FILE_DIR}
+        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
+        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+    )
+    
+    protobuf_generate(
+        TARGET ${PROJECT_NAME}
+        LANGUAGE grpc
+        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
+        GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+        PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
+        IMPORT_DIRS ${PROTO_FILE_DIR}
+        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+    )
+endif()
 
 target_include_directories(${PROJECT_NAME} 
     PRIVATE 
         "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../shared"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../proto/build" 
+        ${PROTO_BINARY_DIR}
 )
     
 target_link_libraries(${PROJECT_NAME} PRIVATE gRPC::gpr gRPC::grpc gRPC::grpc++ gRPC::grpc++_alts GTest::gtest_main)

@@ -78,11 +78,11 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMENT "Running Inf2Cat to create catalog file"
 )
 
-# add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-#   COMMAND "${x64_BUILD_TOOLS_PATH}/makecert.exe" -r -pe -ss PanoptesCertStore -n "CN=Panoptes" "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}/Panoptes.cer"
-#   COMMENT "Generating a driver certificate"
-#   AUTO
-# )
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+  COMMAND "${x64_BUILD_TOOLS_PATH}/makecert.exe" -r -pe -ss PanoptesCertStore -n "CN=Panoptes" "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}/Panoptes.cer"
+  COMMENT "Generating a driver certificate"
+  AUTO
+)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
   COMMAND "${x64_BUILD_TOOLS_PATH}/signtool.exe" sign /a /v /fd sha256 /s PanoptesCertStore /n "Panoptes" /t http://timestamp.digicert.com "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}/Panoptes.sys"

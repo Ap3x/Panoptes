@@ -51,26 +51,68 @@ FetchContent_MakeAvailable(LIEF)
 
 find_package(gRPC CONFIG REQUIRED)
 
+set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/src/panoptes.proto")
+
 # Define source files
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../proto/build/*.cc
+    ${PROTO_FILE}
 )
 
 # Define header files
 file(GLOB HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../proto/build/*.h
 )
 
 # Create shared library
 add_library(${PROJECT_NAME} SHARED ${SOURCES} ${HEADERS})
 
+if(BUILD_GRPC)
+    find_package(gRPC CONFIG REQUIRED)
+
+    # Set proto file path
+    set(PROTO_FILE_DIR "${CMAKE_SOURCE_DIR}/proto/src/")
+    set(PROTO_BUILD_DIR "${CMAKE_SOURCE_DIR}/proto/build")
+
+    # Create build directory if it doesn't exist
+    file(MAKE_DIRECTORY ${PROTO_BUILD_DIR})
+
+    message("   --> PROTOBUF LIB: ${PROTOBUF_LIBRARIES}")
+    message("   --> PROTOBUF INCLUDE: ${Protobuf_INCLUDE_DIRS}")
+    message("   --> PROTOBUF VERSION: ${Protobuf_VERSION}")
+    message("   --> PROTOBUF Found: ${Protobuf_FOUND}")
+    message("   --> PROTOBUF SRC: ${PROTO_SRC}")
+    message("   --> PROTOBUF HEADER: ${PROTO_HEADER}")
+    message("   --> PROTOBUF Folder: ${CMAKE_BINARY_DIR}/proto")
+    
+    #target_link_libraries(${PROJECT_NAME} PUBLIC protobuf::libprotobuf gRPC::grpc++)
+    
+    set(PROTO_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    
+    target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${PROTO_BINARY_DIR}>")
+
+    protobuf_generate(
+        TARGET ${PROJECT_NAME}
+        IMPORT_DIRS ${PROTO_FILE_DIR}
+        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
+        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+    )
+    
+    protobuf_generate(
+        TARGET ${PROJECT_NAME}
+        LANGUAGE grpc
+        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
+        GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+        PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
+        IMPORT_DIRS ${PROTO_FILE_DIR}
+        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+    )
+endif()
+
 # Add include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../proto/build
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../external/LIEF-0.16.5-win64/LIEF-0.16.5-win64/include
 )

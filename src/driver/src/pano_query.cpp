@@ -1,7 +1,6 @@
 #include "pano_query.h" 
 #include <ntifs.h>
 
-
 NTSTATUS QueryProcessMitigationPolicy(HANDLE ProcessId, PROCESS_MITIGATION_POLICY_INFORMATION* policyInfo) {
 	UNREFERENCED_PARAMETER(policyInfo);
 	HANDLE hProcess;
@@ -51,21 +50,3 @@ NTSTATUS QueryProcessMitigationPolicy(HANDLE ProcessId, PROCESS_MITIGATION_POLIC
 
 	return STATUS_SUCCESS;
 }
-
-
-//NTSTATUS InitializeZwQueryInformationProcess() {
-//	UNICODE_STRING routineName;
-//	RtlInitUnicodeString(&routineName, L"ZwQueryInformationProcess");
-//	//https://stackoverflow.com/questions/3707133/how-to-use-zwqueryinformationprocess-to-get-processimagefilename-in-a-kernel-dri
-//	ZwQueryInformationProcess = (QUERY_INFO_PROCESS)MmGetSystemRoutineAddress(&routineName);
-//	if (ZwQueryInformationProcess == NULL) {
-//		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Cannot resolve ZwQueryInformationProcess\n");
-//		return STATUS_INVALID_HANDLE;
-//	}
-//
-//	return STATUS_SUCCESS;
-//}
-
-
-
-

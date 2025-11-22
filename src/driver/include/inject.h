@@ -229,7 +229,7 @@ typedef KKERNEL_ROUTINE(NTAPI* PKKERNEL_ROUTINE);
 
 typedef VOID(NTAPI* PKRUNDOWN_ROUTINE)(_In_ PRKAPC Apc);
 
-extern "C" VOID NTAPI KeInitializeApc(
+EXTERN_C VOID NTAPI KeInitializeApc(
     _Out_ PRKAPC Apc,
     _In_ PRKTHREAD Thread,
     _In_ KAPC_ENVIRONMENT Environment,
@@ -240,7 +240,7 @@ extern "C" VOID NTAPI KeInitializeApc(
     _In_opt_ PVOID NormalContext
 );
 
-extern "C" BOOLEAN NTAPI KeInsertQueueApc(
+EXTERN_C BOOLEAN NTAPI KeInsertQueueApc(
     _Inout_ PRKAPC Apc,
     _In_opt_ PVOID SystemArgument1,
     _In_opt_ PVOID SystemArgument2,

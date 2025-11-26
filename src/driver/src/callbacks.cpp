@@ -5,8 +5,7 @@
 
 PanoptesState g_State{};
 
-PPANO_PROCESS_INFO GetProcessInfo(HANDLE ProcessId)
-{
+PPANO_PROCESS_INFO GetProcessInfo(HANDLE ProcessId) {
 	auto pi = (PPANO_PROCESS_INFO)RtlLookupElementGenericTableAvl(&g_State.Processes, &ProcessId);
 	if (pi != nullptr) {
 		return pi;

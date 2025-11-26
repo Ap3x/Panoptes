@@ -29,23 +29,22 @@ VOID KernelAPCRoutine(PVOID NormalContext, PVOID SystemArgument1, PVOID SystemAr
 	}
 
 #ifdef _DEBUG
-	PUNICODE_STRING processPath{};
-	status = SeLocateProcessImageName(targetProcess, &processPath);
-	if (!NT_SUCCESS(status)) {
-		return;
-	}
+	//PUNICODE_STRING processPath{};
+	//status = SeLocateProcessImageName(targetProcess, &processPath);
+	//if (!NT_SUCCESS(status)) {
+	//	return;
+	//}
 
-	UNICODE_STRING onlyProc{};
-	RtlInitUnicodeString(&onlyProc, L"die.exe");
-	if (wcsstr(processPath->Buffer, onlyProc.Buffer) == NULL) {
-		return;
-	}
+	//UNICODE_STRING onlyProc{};
+	//RtlInitUnicodeString(&onlyProc, L"die.exe");
+	//if (wcsstr(processPath->Buffer, onlyProc.Buffer) == NULL) {
+	//	return;
+	//}
 #endif
 
 	ANSI_STRING loadDllRoutineName = RTL_CONSTANT_STRING("LoadLibraryExW");
-	PVOID testVal2 = SystemArgument1;
-	PVOID testVal3 = *static_cast<PVOID*>(testVal2);
-	PVOID functionAddress = RtlxFindExportedRoutineByName(testVal3, &loadDllRoutineName);
+	PVOID rawImageBaseAddress = *static_cast<PVOID*>(SystemArgument1);
+	PVOID functionAddress = RtlxFindExportedRoutineByName(rawImageBaseAddress, &loadDllRoutineName);
 	if (functionAddress == nullptr) {
 		KdPrint((PANOPTES_PREFIX_ERROR "Unable to find LoadLibraryExW in target process (%u)\n", processId));
 		return;

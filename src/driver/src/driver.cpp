@@ -12,7 +12,7 @@ UNICODE_STRING g_SymbolicLinkName;
 void UnloadPanoptes(PDRIVER_OBJECT DriverObject) {
 	PAGED_CODE();
 	KdPrint(( PANOPTES_PREFIX_SUCCESS "Driver Exit\n"));
-	//Log_DriverExit(DriverObject);
+	Log_DriverExit(DriverObject);
 	//IoDeleteDevice(driver_object);
 	//IoDeleteSymbolicLink(&g_symLink);
 	RemoveCallbacks();
@@ -22,15 +22,15 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject,PUNICODE_STRING RegistryPath) 
 	PAGED_CODE();
 	DriverObject->DriverUnload = UnloadPanoptes;
 
-	//TraceInitialize();
+	TraceInitialize();
 
-	//Log_DriverEntry(DriverObject, RegistryPath);
+	Log_DriverEntry(DriverObject, RegistryPath);
 
-	//NTSTATUS status = FilterInit(&DriverObject);
-	//if (!NT_SUCCESS(status)) {
-	//	KdPrint(( PANOPTES_PREFIX_ERROR "An error occured when attempting to initialized filter\n"));
-	//	return status;
-	//}
+	NTSTATUS status = FilterInit(&DriverObject);
+	if (!NT_SUCCESS(status)) {
+		KdPrint(( PANOPTES_PREFIX_ERROR "An error occured when attempting to initialized filter\n"));
+		return status;
+	}
 
 	//status = InitializeDriverLink(driver_object);
 	//if (!NT_SUCCESS(status))

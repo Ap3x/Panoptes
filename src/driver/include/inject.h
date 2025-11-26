@@ -1,10 +1,12 @@
 #pragma once
+#include "pch.h"
+
+
 typedef unsigned long       DWORD;
 typedef int                 BOOL;
 typedef unsigned char       BYTE;
 typedef unsigned short      WORD;
 
-#define TAG 'inje'
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES 16
 #define IMAGE_DIRECTORY_ENTRY_EXPORT 0
 
@@ -233,7 +235,7 @@ EXTERN_C VOID NTAPI KeInitializeApc(
     _Out_ PRKAPC Apc,
     _In_ PRKTHREAD Thread,
     _In_ KAPC_ENVIRONMENT Environment,
-    _In_ PKKERNEL_ROUTINE KernelRoutine,
+    _In_ PKKERNEL_ROUTINE KernelRundown,
     _In_opt_ PKRUNDOWN_ROUTINE RundownRoutine,
     _In_opt_ PKNORMAL_ROUTINE NormalRoutine,
     _In_opt_ KPROCESSOR_MODE ProcessorMode,
@@ -247,8 +249,16 @@ EXTERN_C BOOLEAN NTAPI KeInsertQueueApc(
     _In_ KPRIORITY Increment
 );
 
+EXTERN_C NTSTATUS NTAPI ZwWriteVirtualMemory(
+	HANDLE ProcessHandle,
+	PVOID BaseAddress,
+	PVOID Buffer,
+	SIZE_T BufferSize,
+	PSIZE_T NumberOfBytesWritten
+);
 
+EXTERN_C BOOLEAN NTAPI KeTestAlertThread(
+	IN KPROCESSOR_MODE AlertMode
+);
 
-bool InjectDLL(HANDLE ProcessId, PVOID processInfo);
-NTSTATUS AllocateMemoryInUserProcess(PEPROCESS Process, SIZE_T Size, PVOID* AllocatedAddress);
-NTSTATUS WriteToTargetProcessMemory(PEPROCESS Process, PVOID TargetAddress, SIZE_T Size, PVOID DataToWrite);
+NTSTATUS InstallKernelModeApcToInjectDll(HANDLE ProcessId, PVOID ImageBase);

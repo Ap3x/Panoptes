@@ -1,5 +1,5 @@
 #pragma once
-#include <wdm.h>
+#include "pch.h"
 #include <TraceLoggingProvider.h> 
 
 #pragma region TraceLogging Initialization

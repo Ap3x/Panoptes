@@ -1,10 +1,8 @@
-#include "driver_constants.h"
+#include "pch.h"
 #include "callbacks.h"
-#include "pano_query.h"
 #include "trace.h"
-#include "pano_filter.h"
-#include <ntdef.h>
-#include <wdm.h>
+#include "filter.h"
+#include "state.h"
 
 UNICODE_STRING g_deviceName;
 UNICODE_STRING g_symLink;
@@ -13,8 +11,8 @@ UNICODE_STRING g_SymbolicLinkName;
 
 void UnloadPanoptes(PDRIVER_OBJECT DriverObject) {
 	PAGED_CODE();
-	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Driver Exit\n");
-	Log_DriverExit(DriverObject);
+	KdPrint(( PANOPTES_PREFIX_SUCCESS "Driver Exit\n"));
+	//Log_DriverExit(DriverObject);
 	//IoDeleteDevice(driver_object);
 	//IoDeleteSymbolicLink(&g_symLink);
 	RemoveCallbacks();
@@ -24,9 +22,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject,PUNICODE_STRING RegistryPath) 
 	PAGED_CODE();
 	DriverObject->DriverUnload = UnloadPanoptes;
 
-	TraceInitialize();
+	//TraceInitialize();
 
-	Log_DriverEntry(DriverObject, RegistryPath);
+	//Log_DriverEntry(DriverObject, RegistryPath);
 
 	//NTSTATUS status = FilterInit(&DriverObject);
 	//if (!NT_SUCCESS(status)) {

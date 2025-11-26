@@ -1,4 +1,4 @@
 #pragma once
-#include "driver_constants.h"
+#include "pch.h"
 
 #define IOCTL_TERMINATE_PROCESS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x900, METHOD_BUFFERED, FILE_ANY_ACCESS)

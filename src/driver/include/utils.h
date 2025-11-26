@@ -1,5 +1,5 @@
-#pragma once
-#include "structs.h"
+#include "pch.h"
+#include "inject.h"
 
 #pragma region Structs
 typedef struct _PROCESS_MITIGATION_POLICY_INFORMATION
@@ -26,15 +26,26 @@ typedef struct _PROCESS_MITIGATION_POLICY_INFORMATION
 		PROCESS_MITIGATION_SEHOP_POLICY SEHOPPolicy;
 	}Data;
 } PROCESS_MITIGATION_POLICY_INFORMATION, * PPROCESS_MITIGATION_POLICY_INFORMATION;
+#pragma endregion
 
 EXTERN_C NTSTATUS NTAPI ZwQueryInformationProcess(
-	HANDLE hProcess, 
-	PROCESSINFOCLASS infoType, 
-	/*out*/ PVOID pBuf, 
-	/*sizeof pBuf*/ ULONG lenBuf, 
+	HANDLE hProcess,
+	PROCESSINFOCLASS infoType,
+	/*out*/ PVOID pBuf,
+	/*sizeof pBuf*/ ULONG lenBuf,
 	SIZE_T* /*PULONG*/ returnLength
 );
 
-#pragma endregion
+EXTERN_C PVOID NTAPI RtlImageDirectoryEntryToData(
+	_In_ PVOID BaseOfImage,
+	_In_ BOOLEAN MappedAsImage,
+	_In_ USHORT DirectoryEntry,
+	_Out_ PULONG Size
+);
 
+BOOLEAN Is64BitProcess(PEPROCESS targetProcess);
+NTSTATUS GetFileNameFromPath(PUNICODE_STRING FullPath, PUNICODE_STRING FileName);
 NTSTATUS QueryProcessMitigationPolicy(HANDLE ProcessId, PROCESS_MITIGATION_POLICY_INFORMATION* policyInfo);
+
+PVOID NTAPI RtlxFindExportedRoutineByName(_In_ PVOID DllBase, _In_ PANSI_STRING ExportName);
+EXTERN_C PVOID RtlImageDirectoryEntryToData(IN PVOID Base, IN BOOLEAN MappedAsImage, IN USHORT DirectoryEntry, OUT PULONG Size);

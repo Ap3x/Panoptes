@@ -9,29 +9,28 @@ find_package(WDK REQUIRED)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
 # Define source files
 set(SOURCE_FILES
     src/callbacks.cpp
     src/driver.cpp
-    src/pano_filter.cpp
+    src/filter.cpp
     src/inject.cpp
     src/ioctl.cpp
-    src/pano_query.cpp
     src/trace.cpp
+    src/state.cpp
+    src/utils.cpp
 )
 
 # Define header files
 set(HEADER_FILES
-    include/driver_constants.h
-    include/pano_filter.h
+    include/pch.h
+    include/filter.h
     include/inject.h
     include/ioctl.h
-    include/pano_query.h
-    include/shellcode.h
-    include/structs.h
     include/trace.h
     include/callbacks.h
+    include/state.h
+    include/utils.h
 )
 
 # Add the driver target

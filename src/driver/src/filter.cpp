@@ -1,12 +1,9 @@
-#include "pano_filter.h"
+#include "filter.h"
 #include "trace.h"
 
 PFLT_FILTER g_FilterHandle;
 
-PWCH GetFileInfo(
-	PFLT_CALLBACK_DATA Data
-) 
-{
+PWCH GetFileInfo(PFLT_CALLBACK_DATA Data) {
 	PFLT_FILE_NAME_INFORMATION fileNameInfo = NULL;
 	NTSTATUS status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY | FLT_FILE_NAME_DO_NOT_CACHE, &fileNameInfo);
 	if (!NT_SUCCESS(status)) {
@@ -21,10 +18,7 @@ PWCH GetFileInfo(
 	}
 }
 
-void MailSlotStatus(
-	PFLT_CALLBACK_DATA Data
-)
-{
+void MailSlotStatus(PFLT_CALLBACK_DATA Data) {
 	PWCH fileName = GetFileInfo(Data);
 	HANDLE sourceProcessId = PsGetCurrentProcessId();
 	HANDLE sourceThreadId = PsGetThreadId(Data->Thread);
@@ -40,10 +34,7 @@ void MailSlotStatus(
 	}
 }
 
-void NamedPipeStatus(
-	PFLT_CALLBACK_DATA Data
-)
-{
+void NamedPipeStatus(PFLT_CALLBACK_DATA Data) {
 	PWCH fileName = GetFileInfo(Data);
 	HANDLE sourceProcessId = PsGetCurrentProcessId();
 	HANDLE sourceThreadId = PsGetThreadId(Data->Thread);
@@ -59,10 +50,7 @@ void NamedPipeStatus(
 	}
 }
 
-void FileWriteStatus(
-	PFLT_CALLBACK_DATA Data
-)
-{
+void FileWriteStatus(PFLT_CALLBACK_DATA Data) {
 	PWCH fileName = GetFileInfo(Data);
 	HANDLE sourceProcessId = PsGetCurrentProcessId();
 	HANDLE sourceThreadId = PsGetThreadId(Data->Thread);
@@ -80,10 +68,7 @@ void FileWriteStatus(
 	}
 }
 
-void FileReadStatus(
-	PFLT_CALLBACK_DATA Data
-)
-{
+void FileReadStatus(PFLT_CALLBACK_DATA Data) {
 	PWCH fileName = GetFileInfo(Data);
 
 	HANDLE sourceProcessId = PsGetCurrentProcessId();
@@ -102,10 +87,7 @@ void FileReadStatus(
 	}
 }
 
-void FileCreationStatus(
-	PFLT_CALLBACK_DATA Data
-) 
-{
+void FileCreationStatus(PFLT_CALLBACK_DATA Data) {
 	PWCH fileName = GetFileInfo(Data);
 
 	HANDLE sourceProcessId = PsGetCurrentProcessId();
@@ -132,13 +114,7 @@ void FileCreationStatus(
 	}
 }
 
-FLT_POSTOP_CALLBACK_STATUS PostOperationCallback(
-	PFLT_CALLBACK_DATA Data,
-	PCFLT_RELATED_OBJECTS FltObjects,
-	PVOID CompletionContext,
-	FLT_POST_OPERATION_FLAGS Flags
-)
-{
+FLT_POSTOP_CALLBACK_STATUS PostOperationCallback(PFLT_CALLBACK_DATA Data,PCFLT_RELATED_OBJECTS FltObjects,PVOID CompletionContext,FLT_POST_OPERATION_FLAGS Flags) {
 	UNREFERENCED_PARAMETER(FltObjects);
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(Flags);
@@ -174,11 +150,7 @@ FLT_POSTOP_CALLBACK_STATUS PostOperationCallback(
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-NTSTATUS PanoptesFilterUnload
-(
-	_In_ FLT_FILTER_UNLOAD_FLAGS Flags
-)
-{
+NTSTATUS PanoptesFilterUnload(_In_ FLT_FILTER_UNLOAD_FLAGS Flags) {
 	PAGED_CODE();
 	NTSTATUS status;
 	if (Flags == FLTFL_FILTER_UNLOAD_MANDATORY) {
@@ -241,8 +213,7 @@ const FLT_REGISTRATION FilterRegistration = {
 
 #pragma endregion
 
-NTSTATUS FilterInit(PDRIVER_OBJECT* DriverObject)
-{
+NTSTATUS FilterInit(PDRIVER_OBJECT* DriverObject) {
 	NTSTATUS status = FltRegisterFilter(
 		*DriverObject,                  //Driver
 		&FilterRegistration,           //Registration

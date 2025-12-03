@@ -18,6 +18,8 @@ jobs:
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: 'vcpkg.json'
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -56,4 +58,3 @@ jobs:
             build/release/**/*.dll
             build/release/**/*.exe
           if-no-files-found: warn
-

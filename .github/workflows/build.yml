@@ -18,8 +18,6 @@ jobs:
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: 'a9eee3b18df395dbb8be71a31bd78ea441056e42'
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2

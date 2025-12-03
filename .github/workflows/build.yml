@@ -14,7 +14,13 @@ jobs:
     
     steps:
       - name: Checkout repository
+<<<<<<< HEAD
         uses: actions/checkout@v4
+=======
+        uses: actions/checkout@v6.0.1
+        with:
+          submodules: recursive
+>>>>>>> 0526d2decb119ed11721741a35421729398f3b75
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11

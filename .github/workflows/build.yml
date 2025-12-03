@@ -25,7 +25,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Configure CMake (Debug)
-        run: cmake --preset debug -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON
+        run: cmake --preset debug -G "Visual Studio 17 2022" -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 

@@ -3,7 +3,8 @@
 #include <TraceLoggingProvider.h> 
 
 #pragma region TraceLogging Initialization
-void TraceInitialize(BOOLEAN initialize = true);
+void TraceInitialize();
+void TraceTerminate();
 #pragma endregion
 
 #pragma region Driver Operations

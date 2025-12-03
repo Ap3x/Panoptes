@@ -4,7 +4,6 @@
 NTSTATUS PanoptesState::Init() {
 	ExInitializeFastMutex(&ProcessesLock);
 	RtlInitializeGenericTableAvl(&Processes, ProcessCompare, TableAlloc, TableFree, this);
-	ImageBase = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(PVOID), DRIVER_TAG);
 	return STATUS_SUCCESS;
 }
 
@@ -22,20 +21,20 @@ RTL_GENERIC_COMPARE_RESULTS PanoptesState::ProcessCompare(PRTL_AVL_TABLE Table, 
 _Use_decl_annotations_
 PVOID PanoptesState::TableAlloc(_RTL_AVL_TABLE* Table, CLONG ByteSize) {
 	UNREFERENCED_PARAMETER(Table);
-	return ExAllocatePool2(POOL_FLAG_PAGED, ByteSize, DRIVER_TAG);
+	return ExAllocatePool2(POOL_FLAG_PAGED, ByteSize, 'stky');
 }
 
 _Use_decl_annotations_
 VOID PanoptesState::TableFree(_RTL_AVL_TABLE* Table, PVOID Buffer) {
 	UNREFERENCED_PARAMETER(Table);
-	ExFreePool(Buffer);
+	ExFreePoolWithTag(Buffer, 'stky');
 }
 
 void PanoptesState::Term() {
+	// Delete all elements by repeatedly deleting the first element until table is empty
+	// This is safer than enumerating and deleting, as deletion may invalidate enumeration state
 	PVOID element;
 	while ((element = RtlEnumerateGenericTableAvl(&Processes, TRUE)) != nullptr) {
 		RtlDeleteElementGenericTableAvl(&Processes, element);
 	}
-
-	ExFreePool(ImageBase, DRIVER_TAG);
 }

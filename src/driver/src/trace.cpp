@@ -7,13 +7,14 @@ PDRIVER_OBJECT  g_DriverObject;
 TRACELOGGING_DEFINE_PROVIDER(g_hPanoProvider, "Panoptes",
 	(0x7036af95, 0x9daf, 0x4486, 0x8d, 0x93, 0x70, 0x5, 0xd4, 0x5a, 0x6a, 0x6));
 
-void TraceInitialize(BOOLEAN initialize)
+void TraceInitialize()
 {
-	if (!initialize) {
-		TraceLoggingUnregister(g_hPanoProvider);
-	}
-	
 	TraceLoggingRegister(g_hPanoProvider);
+}
+
+void TraceTerminate()
+{
+	TraceLoggingUnregister(g_hPanoProvider);
 }
 #pragma endregion
 

@@ -1,14 +1,17 @@
 #pragma once
+#include <fltKernel.h>
 #include <ntddk.h>
 
 typedef struct _PANO_PROCESS_INFO
 {
 	ULONG ProcessId;
-	BOOLEAN is64Bit;
 	BOOLEAN Injected;
-	BOOLEAN kernel32Loaded;
-	BOOLEAN kernelBaseLoaded;
-	BOOLEAN ntdllLoaded;
+	BOOLEAN Kernel32Loaded;
+	BOOLEAN KernelBaseLoaded;
+	BOOLEAN NtdllLoaded;
+	BOOLEAN Wow64Loaded;
+	BOOLEAN MitigationPolicyBan;
+	PVOID Kernel32ImageBase;
 } PANO_PROCESS_INFO, * PPANO_PROCESS_INFO;
 
 struct PanoptesState {
@@ -16,7 +19,9 @@ struct PanoptesState {
 	RTL_AVL_TABLE Processes;
 	FAST_MUTEX ProcessesLock;
 	PCALLBACK_OBJECT ProcessCreateCallback;
-	PVOID ImageBase;
+	PFLT_FILTER FilterHandle;
+	UNICODE_STRING g_symLink;
+	UNICODE_STRING g_SymbolicLinkName;
 
 	NTSTATUS Init();
 	void Term();

@@ -261,4 +261,4 @@ EXTERN_C BOOLEAN NTAPI KeTestAlertThread(
 	IN KPROCESSOR_MODE AlertMode
 );
 
-NTSTATUS InstallKernelModeApcToInjectDll(HANDLE ProcessId, PVOID ImageBase);
+NTSTATUS InstallKernelModeApcToInjectDll(HANDLE ProcessId, PVOID ImageBase, BOOLEAN is64Bit);

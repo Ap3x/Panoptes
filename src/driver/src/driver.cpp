@@ -4,42 +4,53 @@
 #include "filter.h"
 #include "state.h"
 
-UNICODE_STRING g_deviceName;
-UNICODE_STRING g_symLink;
-PDEVICE_OBJECT g_deviceObject;
-UNICODE_STRING g_SymbolicLinkName;
+PanoptesState g_State{};
 
 void UnloadPanoptes(PDRIVER_OBJECT DriverObject) {
 	PAGED_CODE();
-	KdPrint(( PANOPTES_PREFIX_SUCCESS "Driver Exit\n"));
-	Log_DriverExit(DriverObject);
-	//IoDeleteDevice(driver_object);
-	//IoDeleteSymbolicLink(&g_symLink);
+	
+	// Remove callbacks first to prevent new accesses to state
 	RemoveCallbacks();
+	
+	FltUnregisterFilter(g_State.FilterHandle);
+	
+	// Now safe to clean up state - no callbacks can access it
+	g_State.Term();
+	
+	Log_DriverExit(DriverObject);
+	
+	TraceTerminate();
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject,PUNICODE_STRING RegistryPath) {
 	PAGED_CODE();
+	NTSTATUS status = NULL;
 	DriverObject->DriverUnload = UnloadPanoptes;
+	
+	status = g_State.Init();
+	if (!NT_SUCCESS(status)) {
+		KdPrint(( PANOPTES_PREFIX_ERROR "An error occured when attempting to initialize global state\n"));
+		return status;
+	}
 
 	TraceInitialize();
 
 	Log_DriverEntry(DriverObject, RegistryPath);
 
-	NTSTATUS status = FilterInit(&DriverObject);
+	status = FilterInitialize(DriverObject, &g_State);
 	if (!NT_SUCCESS(status)) {
 		KdPrint(( PANOPTES_PREFIX_ERROR "An error occured when attempting to initialized filter\n"));
 		return status;
 	}
 
-	//status = InitializeDriverLink(driver_object);
+	//status = InitializeDriverLink(DriverObject);
 	//if (!NT_SUCCESS(status))
 	//{
 	//	KdPrint(( PANOPTES_PREFIX_ERROR "An error occured when attempting to initialized device pipe\n"));
 	//	return status;
 	//}
 
-	NTSTATUS status = InitializeKernelCallbacks();
+	status = InitializeKernelCallbacks(&g_State);
 	if (!NT_SUCCESS(status))
 	{
 		KdPrint(( PANOPTES_PREFIX_ERROR "An error occured when attempting to initialized kernel callbacks\n"));

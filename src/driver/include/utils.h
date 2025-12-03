@@ -36,16 +36,15 @@ EXTERN_C NTSTATUS NTAPI ZwQueryInformationProcess(
 	SIZE_T* /*PULONG*/ returnLength
 );
 
-EXTERN_C PVOID NTAPI RtlImageDirectoryEntryToData(
-	_In_ PVOID BaseOfImage,
-	_In_ BOOLEAN MappedAsImage,
-	_In_ USHORT DirectoryEntry,
-	_Out_ PULONG Size
+EXTERN_C NTSTATUS NTAPI ZwQueryInformationToken(
+	IN HANDLE TokenHandle,
+	IN TOKEN_INFORMATION_CLASS TokenInformationClass,
+	OUT PVOID TokenInformation OPTIONAL,
+	IN ULONG TokenInformationLength,
+	OUT PULONG ReturnLength
 );
 
-BOOLEAN Is64BitProcess(PEPROCESS targetProcess);
 NTSTATUS GetFileNameFromPath(PUNICODE_STRING FullPath, PUNICODE_STRING FileName);
-NTSTATUS QueryProcessMitigationPolicy(HANDLE ProcessId, PROCESS_MITIGATION_POLICY_INFORMATION* policyInfo);
+NTSTATUS QueryProcessMitigationPolicy(PEPROCESS ProcessId, PROCESS_MITIGATION_POLICY_INFORMATION* policyInfo);
 
-PVOID NTAPI RtlxFindExportedRoutineByName(_In_ PVOID DllBase, _In_ PANSI_STRING ExportName);
-EXTERN_C PVOID RtlImageDirectoryEntryToData(IN PVOID Base, IN BOOLEAN MappedAsImage, IN USHORT DirectoryEntry, OUT PULONG Size);
+EXTERN_C PVOID NTAPI RtlFindExportedRoutineByName(_In_ PVOID DllBase, _In_ PCSTR RoutineName);

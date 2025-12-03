@@ -81,6 +81,19 @@ function(configure_target TARGET_NAME ARCH)
             $<$<CONFIG:Release>:/DEBUG:NONE>
         )
     endif()
+
+    # Sign DLL using the same certificate as the Driver
+    if(ARCH STREQUAL "x64")
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND "${x64_BUILD_TOOLS_PATH}/signtool.exe" sign /a /v /fd sha256 /s PanoptesCertStore /n "Panoptes" /t http://timestamp.digicert.com "$<TARGET_FILE:${TARGET_NAME}>"
+            COMMENT "Signing the DLL"
+        )
+    else()
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND "${x86_BUILD_TOOLS_PATH}signtool.exe" sign /a /v /fd sha256 /s PanoptesCertStore /n "Panoptes" /t http://timestamp.digicert.com "$<TARGET_FILE:${TARGET_NAME}>"
+            COMMENT "Signing the DLL"
+        )
+    endif()
 endfunction()
 
 # Create x64 and x86 targets

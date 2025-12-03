@@ -1,26 +1,16 @@
 #include "callbacks.h"
-#include "state.h"
 #include "inject.h"
 #include "utils.h"
-
-PanoptesState g_State{};
+#include <ntifs.h>
+PanoptesState* g_pState = nullptr;
 
 PPANO_PROCESS_INFO GetProcessInfo(HANDLE ProcessId) {
-	auto pi = (PPANO_PROCESS_INFO)RtlLookupElementGenericTableAvl(&g_State.Processes, &ProcessId);
+	ULONG id = HandleToUlong(ProcessId);
+	auto pi = (PPANO_PROCESS_INFO)RtlLookupElementGenericTableAvl(&g_pState->Processes, &id);
 	if (pi != nullptr) {
 		return pi;
 	}
 	return nullptr;
-}
-
-VOID RemoveProcessInfo(HANDLE ProcessId) {
-	ExAcquireFastMutex(&g_State.ProcessesLock);
-	PANO_PROCESS_INFO pi;
-	pi.ProcessId = HandleToUlong(ProcessId);
-	RtlDeleteElementGenericTableAvl(&g_State.Processes, &pi);
-	KdPrint((PANOPTES_PREFIX_SUCCESS "Process %u deleted from table\n", pi.ProcessId));
-	ExReleaseFastMutex(&g_State.ProcessesLock);
-	return;
 }
 
 // https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/windows-kernel-mode-process-and-thread-manager#best
@@ -29,56 +19,149 @@ VOID LoadImageNotifyRoutine(PUNICODE_STRING FullImageName, HANDLE ProcessId, PIM
 	UNREFERENCED_PARAMETER(ImageInfo);
 	ULONG id = HandleToUlong(ProcessId);
 
-	if (PsIsProtectedProcess(PsGetCurrentProcess())){
-		KdPrint((PANOPTES_PREFIX_WARNING "Skipping protected process %u\n", id));
-		RemoveProcessInfo(ProcessId);
+	PPANO_PROCESS_INFO pi = GetProcessInfo(ProcessId);
+	if (pi == nullptr) {
+		return;
+	}
+
+	if (pi->Injected || pi->MitigationPolicyBan) {
 		return;
 	}
 
 	UNICODE_STRING loadedImageName{};
 	GetFileNameFromPath(FullImageName, &loadedImageName);
 
-	auto pi = GetProcessInfo(ProcessId);
-	if (pi == nullptr) {
-		return;
-	}
+	// NTDLL must be loaded for the hooks to work
+	if (!pi->NtdllLoaded) {
+		UNICODE_STRING ntdllLoadImage;
+		RtlInitUnicodeString(&ntdllLoadImage, L"ntdll.dll");
+		if (RtlCompareUnicodeString(&ntdllLoadImage, &loadedImageName, TRUE) == 0) {
+			pi->NtdllLoaded = TRUE;
 
-	if (pi->kernel32Loaded && pi->kernelBaseLoaded && pi->ntdllLoaded) {
-		if (pi->Injected) {
+			PEPROCESS targetProcess{};
+			NTSTATUS status = PsLookupProcessByProcessId(ProcessId, &targetProcess);
+			if (!NT_SUCCESS(status)) {
+				return;
+			}
+
+			PROCESS_MITIGATION_POLICY_INFORMATION policyInfo;
+			policyInfo.Policy = ProcessSignaturePolicy;
+
+			status = QueryProcessMitigationPolicy(targetProcess, &policyInfo);
+			if (!NT_SUCCESS(status)) {
+				ObDereferenceObject(targetProcess);
+				return;
+			}
+
+			if (policyInfo.Data.SignaturePolicy.MicrosoftSignedOnly != 0 ||
+				policyInfo.Data.SignaturePolicy.StoreSignedOnly != 0 ||
+				policyInfo.Data.SignaturePolicy.MitigationOptIn != 0) {
+				pi->MitigationPolicyBan = TRUE;
+				ObDereferenceObject(targetProcess);
+				return;
+			}
+
+			ObDereferenceObject(targetProcess);
+		}
+	}
+	
+	if (!pi->Wow64Loaded) {
+		//Check if x86 process and ensure that it will be ready to be injected into
+		UNICODE_STRING ntdllLoadImage;
+		RtlInitUnicodeString(&ntdllLoadImage, L"wow64.dll");
+		if (RtlCompareUnicodeString(&ntdllLoadImage, &loadedImageName, TRUE) == 0) {
+			pi->Wow64Loaded = TRUE;
 			return;
 		}
-		KdPrint((PANOPTES_PREFIX_SUCCESS "All required images loaded for process %u, attempting injection\n", id));
-		auto test = g_State.ImageBase;
-		InstallKernelModeApcToInjectDll(ProcessId, test);
-		pi->Injected = TRUE;
-		return;
 	}
-
-	UNICODE_STRING ntdllLoadImage;
-	RtlInitUnicodeString(&ntdllLoadImage, L"ntdll.dll");
-	if (RtlCompareUnicodeString(&ntdllLoadImage, &loadedImageName, TRUE) == 0) {
-		pi->ntdllLoaded = TRUE;
-	}
-
-	UNICODE_STRING kernel32LoadImage;
-	RtlInitUnicodeString(&kernel32LoadImage, L"kernel32.dll");
-	if (RtlCompareUnicodeString(&kernel32LoadImage, &loadedImageName, TRUE) == 0) {
-		PVOID ImageBaseValue = g_State.ImageBase;
-		if (ImageBaseValue == nullptr) {
+	
+	if (!pi->Kernel32Loaded) {
+		// Kernel32 and KernelBase must be loaded for the inject to work
+		UNICODE_STRING kernel32LoadImage;
+		RtlInitUnicodeString(&kernel32LoadImage, L"kernel32.dll");
+		if (RtlCompareUnicodeString(&kernel32LoadImage, &loadedImageName, TRUE) == 0) {
+			pi->Kernel32Loaded = TRUE;
+			pi->Kernel32ImageBase = ImageInfo->ImageBase;
 			return;
 		}
-		RtlCopyMemory(g_State.ImageBase, &ImageInfo->ImageBase, sizeof(PVOID));
-		pi->kernel32Loaded = TRUE;
 	}
 
-	UNICODE_STRING kernelbaseLoadImage;
-	RtlInitUnicodeString(&kernel32LoadImage, L"kernelbase.dll");
-	if (RtlCompareUnicodeString(&kernel32LoadImage, &loadedImageName, TRUE) == 0) {
-		KdPrint((PANOPTES_PREFIX_SUCCESS "Attempting to injected Into %u\n", id));
-		pi->kernelBaseLoaded = TRUE;
+	if (!pi->KernelBaseLoaded) {
+		// Kernel32 and KernelBase must be loaded for the inject to work
+		UNICODE_STRING kernelbaseLoadImage;
+		RtlInitUnicodeString(&kernelbaseLoadImage, L"kernelbase.dll");
+		if (RtlCompareUnicodeString(&kernelbaseLoadImage, &loadedImageName, TRUE) == 0) {
+			pi->KernelBaseLoaded = TRUE;
+			return;
+		}
+	}
+
+	if (pi->Kernel32Loaded && pi->KernelBaseLoaded) {
+		if (pi->Kernel32ImageBase != nullptr) {
+			pi->Injected = TRUE;
+			InstallKernelModeApcToInjectDll(ProcessId, &pi->Kernel32ImageBase, pi->Wow64Loaded);
+		}
 	}
 
 	return;
+}
+
+NTSTATUS IsIgnoredExecutable(ULONG* ProcessId, BOOLEAN* result) {
+	PEPROCESS targetProcess{};
+	NTSTATUS status = PsLookupProcessByProcessId(ProcessId, &targetProcess);
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+
+	PUNICODE_STRING processPath = NULL;
+	status = SeLocateProcessImageName(targetProcess, &processPath);
+	if (!NT_SUCCESS(status)) {
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
+
+	UNICODE_STRING processPathFile{};
+	GetFileNameFromPath(processPath, &processPathFile);
+
+	UNICODE_STRING ignore1;
+	UNICODE_STRING ignore2;
+	UNICODE_STRING ignore3;
+	UNICODE_STRING ignore4;
+	UNICODE_STRING ignore5;
+	UNICODE_STRING ignore6;
+	UNICODE_STRING ignore7;
+	RtlInitUnicodeString(&ignore1, L"\\Device\\HarddiskVolume3\\Windows\\System32\\dllhost.exe");
+	// Windows Update Binary
+	RtlInitUnicodeString(&ignore2, L"\\Device\\HarddiskVolume3\\Windows\\System32\\mousocoreworker.exe");
+	RtlInitUnicodeString(&ignore3, L"\\Device\\HarddiskVolume3\\Windows\\System32\\USOCoreWorker.exe");
+	RtlInitUnicodeString(&ignore4, L"\\Device\\HarddiskVolume3\\Windows\\System32\\USOClient.exe");
+
+	RtlInitUnicodeString(&ignore5, L"msedgewebview2.exe");
+	RtlInitUnicodeString(&ignore6, L"\\Device\\HarddiskVolume3\\Windows\\SysWOW64\\WerFault.exe");
+	RtlInitUnicodeString(&ignore7, L"\\Device\\HarddiskVolume3\\Windows\\System32\\WerFault.exe");
+
+	if (RtlEqualUnicodeString(&processPathFile, &ignore5, TRUE)) {
+		ExFreePool(processPath);
+		ObDereferenceObject(targetProcess);
+		return STATUS_UNSUCCESSFUL;
+	}
+
+	if (RtlEqualUnicodeString(processPath, &ignore1, TRUE) ||
+		RtlEqualUnicodeString(processPath, &ignore2, TRUE) ||
+		RtlEqualUnicodeString(processPath, &ignore3, TRUE) ||
+		RtlEqualUnicodeString(processPath, &ignore4, TRUE) ||
+		RtlEqualUnicodeString(processPath, &ignore6, TRUE) ||
+		RtlEqualUnicodeString(processPath, &ignore7, TRUE)
+		) {
+		ExFreePool(processPath);
+		ObDereferenceObject(targetProcess);
+		*result = true;
+		return STATUS_SUCCESS;
+	}
+
+	ObDereferenceObject(targetProcess);
+	*result = false ;
+	return STATUS_SUCCESS;
 }
 
 _Use_decl_annotations_
@@ -87,26 +170,39 @@ VOID ProcessCreateCallback(PEPROCESS Process, HANDLE ProcessId, PPS_CREATE_NOTIF
 	ULONG id = HandleToUlong(ProcessId);
 
 	if (CreateInfo != NULL) {
-		ExAcquireFastMutex(&g_State.ProcessesLock);
-		//Check if process info already exists
-		auto pi = (PPANO_PROCESS_INFO)RtlLookupElementGenericTableAvl(&g_State.Processes, &id);
+		if (PsIsProtectedProcess(PsGetCurrentProcess())) {
+			return;
+		}
+
+		ExAcquireFastMutex(&g_pState->ProcessesLock);
+		auto pi = (PPANO_PROCESS_INFO)RtlLookupElementGenericTableAvl(&g_pState->Processes, &id);
 		if (pi == nullptr) {
+			BOOLEAN ignored = false;
+			IsIgnoredExecutable(&id, &ignored);
+
 			PANO_PROCESS_INFO newProcessEntry{};
 			newProcessEntry.ProcessId = id;
-			pi = (PPANO_PROCESS_INFO)RtlInsertElementGenericTableAvl(&g_State.Processes, &newProcessEntry, sizeof(newProcessEntry), nullptr);
-			KdPrint((PANOPTES_PREFIX_SUCCESS "Process %u added to table\n", id));
+			BOOLEAN successInsert = false;
+			
+			pi = (PPANO_PROCESS_INFO)RtlInsertElementGenericTableAvl(&g_pState->Processes, &newProcessEntry, sizeof(newProcessEntry), &successInsert);
+			if (!successInsert) {
+				KdPrint((PANOPTES_PREFIX_ERROR "Error inserting process into AVL tree\n"));
+			}
 		}
-		ExReleaseFastMutex(&g_State.ProcessesLock);
+		ExReleaseFastMutex(&g_pState->ProcessesLock);
 	}
 	else {
-		RemoveProcessInfo(&id);
-		KdPrint((PANOPTES_PREFIX_SUCCESS "Process %u terminated and removed from table\n", id));
+		ExAcquireFastMutex(&g_pState->ProcessesLock);
+		RtlDeleteElementGenericTableAvl(&g_pState->Processes, &id);
+		ExReleaseFastMutex(&g_pState->ProcessesLock);
 	}
 }
 
-NTSTATUS InitializeKernelCallbacks() {
+NTSTATUS InitializeKernelCallbacks(PanoptesState* State) {
 	PAGED_CODE();
 	NTSTATUS status;
+
+	g_pState = State;
 
 	status = PsSetCreateProcessNotifyRoutineEx(ProcessCreateCallback, FALSE);
 	if (!NT_SUCCESS(status)) {
@@ -129,7 +225,6 @@ NTSTATUS InitializeKernelCallbacks() {
 	}
 
 	KdPrint((PANOPTES_PREFIX_SUCCESS "Set Image Load Notify Callbacks\n"));
-	status = g_State.Init();
 
 	return STATUS_SUCCESS;
 }
@@ -137,6 +232,5 @@ NTSTATUS InitializeKernelCallbacks() {
 VOID RemoveCallbacks() {
 	PsSetCreateProcessNotifyRoutineEx(ProcessCreateCallback, TRUE);
 	PsRemoveLoadImageNotifyRoutine(LoadImageNotifyRoutine);
-	g_State.Term();
 	return;
 }

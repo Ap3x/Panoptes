@@ -1,6 +1,5 @@
 {
   "dependencies": [
-    "detours",
     {
       "name": "grpc",
       "version>=": "1.71.0"

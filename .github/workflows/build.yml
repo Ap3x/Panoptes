@@ -23,6 +23,8 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
+        env:
+          CMAKE_GENERATOR: "Visual Studio 17 2022"
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -31,6 +33,7 @@ jobs:
         run: cmake --preset debug -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          CMAKE_GENERATOR: "Visual Studio 17 2022"
 
       - name: Build (Debug)
         run: msbuild build/debug/Panoptes.sln /p:Configuration=Debug /p:Platform=x64 /m
@@ -61,6 +64,8 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
+        env:
+          CMAKE_GENERATOR: "Visual Studio 17 2022"
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -69,6 +74,7 @@ jobs:
         run: cmake --preset release -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          CMAKE_GENERATOR: "Visual Studio 17 2022"
 
       - name: Build (Release)
         run: msbuild build/release/Panoptes.sln /p:Configuration=Release /p:Platform=x64 /m

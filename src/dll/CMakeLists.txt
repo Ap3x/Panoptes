@@ -44,9 +44,9 @@ function(configure_target TARGET_NAME ARCH)
     )
 
     # Set output names and directories
-    set_target_properties(${TARGET_NAME} PROPERTIES 
+    set_target_properties(${TARGET_NAME} PROPERTIES
         OUTPUT_NAME "${PROJECT_NAME}${OUTPUT_SUFFIX}"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}")
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>")
 
     # Include directories
     target_include_directories(${TARGET_NAME} PRIVATE

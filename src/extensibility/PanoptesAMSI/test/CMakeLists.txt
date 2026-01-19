@@ -4,6 +4,11 @@ project(Test_PanoptesAMSI)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Set static runtime for MSVC - MUST BE SET BEFORE ANY TARGETS
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 find_package(gRPC CONFIG REQUIRED)
 
 include(FetchContent)
@@ -11,8 +16,8 @@ FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
 )
-# For Windows: Prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+# Use static CRT to match the rest of the project
+set(gtest_force_shared_crt OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 enable_testing()
@@ -34,43 +39,66 @@ set(HEADERS
 add_executable(Test_PanoptesAMSI ${SOURCES} ${HEADERS})
 
 if(BUILD_GRPC)
+    find_package(Protobuf CONFIG REQUIRED)
     find_package(gRPC CONFIG REQUIRED)
 
     # Set proto file path
-    set(PROTO_FILE_DIR "${CMAKE_SOURCE_DIR}/proto/src/")
-    set(PROTO_BUILD_DIR "${CMAKE_SOURCE_DIR}/proto/build")
+    set(PROTO_SRC "${CMAKE_SOURCE_DIR}/proto/src")
+    set(PROTO_FILE "${PROTO_SRC}/panoptes.proto")
+    set(PROTO_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
-    # Create build directory if it doesn't exist
-    file(MAKE_DIRECTORY ${PROTO_BUILD_DIR})
+    # Generated file paths
+    set(PROTO_PB_CC "${PROTO_OUT_DIR}/panoptes.pb.cc")
+    set(PROTO_PB_H "${PROTO_OUT_DIR}/panoptes.pb.h")
+    set(PROTO_GRPC_CC "${PROTO_OUT_DIR}/panoptes.grpc.pb.cc")
+    set(PROTO_GRPC_H "${PROTO_OUT_DIR}/panoptes.grpc.pb.h")
+
+    # Find protoc executable
+    find_program(PROTOC_EXECUTABLE protoc REQUIRED)
 
     message("   --> PROTOBUF LIB: ${PROTOBUF_LIBRARIES}")
     message("   --> PROTOBUF INCLUDE: ${Protobuf_INCLUDE_DIRS}")
     message("   --> PROTOBUF VERSION: ${Protobuf_VERSION}")
     message("   --> PROTOBUF Found: ${Protobuf_FOUND}")
-    message("   --> PROTOBUF SRC: ${PROTO_SRC}")
-    message("   --> PROTOBUF HEADER: ${PROTO_HEADER}")
-    message("   --> PROTOBUF Folder: ${CMAKE_BINARY_DIR}/proto")
-    
-    target_link_libraries(${PROJECT_NAME} PUBLIC protobuf::libprotobuf gRPC::grpc++)
-    
-    set(PROTO_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    
-    protobuf_generate(
-        TARGET ${PROJECT_NAME}
-        IMPORT_DIRS ${PROTO_FILE_DIR}
-        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
-        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+    message("   --> PROTO_FILE: ${PROTO_FILE}")
+    message("   --> Protobuf Compiler: ${PROTOC_EXECUTABLE}")
+
+    # Create custom command for protobuf generation
+    add_custom_command(
+        OUTPUT ${PROTO_PB_CC} ${PROTO_PB_H}
+        COMMAND ${PROTOC_EXECUTABLE}
+        ARGS --cpp_out=${PROTO_OUT_DIR}
+             -I${PROTO_SRC}
+             ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE}
+        COMMENT "Running protobuf compiler on ${PROTO_FILE}"
+        VERBATIM
     )
-    
-    protobuf_generate(
-        TARGET ${PROJECT_NAME}
-        LANGUAGE grpc
-        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
-        GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
-        PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
-        IMPORT_DIRS ${PROTO_FILE_DIR}
-        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+
+    # Create custom command for gRPC generation
+    add_custom_command(
+        OUTPUT ${PROTO_GRPC_CC} ${PROTO_GRPC_H}
+        COMMAND ${PROTOC_EXECUTABLE}
+        ARGS --grpc_out=${PROTO_OUT_DIR}
+             --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
+             -I${PROTO_SRC}
+             ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE} ${PROTO_PB_CC} gRPC::grpc_cpp_plugin
+        COMMENT "Running gRPC compiler on ${PROTO_FILE}"
+        VERBATIM
     )
+
+    # Add generated files as source to the target
+    target_sources(${PROJECT_NAME} PRIVATE
+        ${PROTO_PB_CC}
+        ${PROTO_GRPC_CC}
+    )
+
+    # Add include directory for generated files
+    target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${PROTO_OUT_DIR}>")
+
+    # Link protobuf and gRPC libraries
+    target_link_libraries(${PROJECT_NAME} PRIVATE protobuf::libprotobuf gRPC::grpc++)
 endif()
 
 target_include_directories(${PROJECT_NAME} 
@@ -84,21 +112,24 @@ target_link_libraries(${PROJECT_NAME} PRIVATE gRPC::gpr gRPC::grpc gRPC::grpc++ 
 target_link_libraries(${PROJECT_NAME} PRIVATE amsi Shlwapi Crypt32)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/tests"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/tests"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/tests"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/tests/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/tests/$<CONFIG>"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/tests/$<CONFIG>"
 ) 
 
 if(MSVC)
     # Set static runtime library for all configurations
     set_property(TARGET ${PROJECT_NAME} PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        
+
     # Additional MSVC-specific flags for static linking
     target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Release>:/MT>
         $<$<CONFIG:Debug>:/MTd>
     )
+
+    # Add linker flags to handle symbol issues with vcpkg libraries
+    target_link_options(${PROJECT_NAME} PRIVATE /FORCE:MULTIPLE)
 endif()
 
 include(GoogleTest)

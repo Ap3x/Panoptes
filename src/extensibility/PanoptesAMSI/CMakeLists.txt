@@ -30,45 +30,66 @@ file(GLOB HEADERS
 add_library(${PROJECT_NAME} SHARED ${SOURCES} ${HEADERS})
 
 if(BUILD_GRPC)
+    find_package(Protobuf CONFIG REQUIRED)
     find_package(gRPC CONFIG REQUIRED)
 
     # Set proto file path
-    set(PROTO_FILE_DIR "${CMAKE_SOURCE_DIR}/proto/src/")
-    set(PROTO_BUILD_DIR "${CMAKE_SOURCE_DIR}/proto/build")
+    set(PROTO_SRC "${CMAKE_SOURCE_DIR}/proto/src")
+    set(PROTO_FILE "${PROTO_SRC}/panoptes.proto")
+    set(PROTO_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
-    # Create build directory if it doesn't exist
-    file(MAKE_DIRECTORY ${PROTO_BUILD_DIR})
+    # Generated file paths
+    set(PROTO_PB_CC "${PROTO_OUT_DIR}/panoptes.pb.cc")
+    set(PROTO_PB_H "${PROTO_OUT_DIR}/panoptes.pb.h")
+    set(PROTO_GRPC_CC "${PROTO_OUT_DIR}/panoptes.grpc.pb.cc")
+    set(PROTO_GRPC_H "${PROTO_OUT_DIR}/panoptes.grpc.pb.h")
+
+    # Find protoc executable
+    find_program(PROTOC_EXECUTABLE protoc REQUIRED)
 
     message("   --> PROTOBUF LIB: ${PROTOBUF_LIBRARIES}")
     message("   --> PROTOBUF INCLUDE: ${Protobuf_INCLUDE_DIRS}")
     message("   --> PROTOBUF VERSION: ${Protobuf_VERSION}")
     message("   --> PROTOBUF Found: ${Protobuf_FOUND}")
-    message("   --> PROTOBUF SRC: ${PROTO_SRC}")
-    message("   --> PROTOBUF HEADER: ${PROTO_HEADER}")
-    message("   --> PROTOBUF Folder: ${CMAKE_BINARY_DIR}/proto")
-    
-    #target_link_libraries(${PROJECT_NAME} PUBLIC protobuf::libprotobuf gRPC::grpc++)
-    
-    set(PROTO_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    
-    target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${PROTO_BINARY_DIR}>")
+    message("   --> PROTO_FILE: ${PROTO_FILE}")
+    message("   --> Protobuf Compiler: ${PROTOC_EXECUTABLE}")
 
-    protobuf_generate(
-        TARGET ${PROJECT_NAME}
-        IMPORT_DIRS ${PROTO_FILE_DIR}
-        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
-        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+    # Create custom command for protobuf generation
+    add_custom_command(
+        OUTPUT ${PROTO_PB_CC} ${PROTO_PB_H}
+        COMMAND ${PROTOC_EXECUTABLE}
+        ARGS --cpp_out=${PROTO_OUT_DIR}
+             -I${PROTO_SRC}
+             ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE}
+        COMMENT "Running protobuf compiler on ${PROTO_FILE}"
+        VERBATIM
     )
-    
-    protobuf_generate(
-        TARGET ${PROJECT_NAME}
-        LANGUAGE grpc
-        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
-        GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
-        PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
-        IMPORT_DIRS ${PROTO_FILE_DIR}
-        PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+
+    # Create custom command for gRPC generation
+    add_custom_command(
+        OUTPUT ${PROTO_GRPC_CC} ${PROTO_GRPC_H}
+        COMMAND ${PROTOC_EXECUTABLE}
+        ARGS --grpc_out=${PROTO_OUT_DIR}
+             --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
+             -I${PROTO_SRC}
+             ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE} ${PROTO_PB_CC} gRPC::grpc_cpp_plugin
+        COMMENT "Running gRPC compiler on ${PROTO_FILE}"
+        VERBATIM
     )
+
+    # Add generated files as source to the target
+    target_sources(${PROJECT_NAME} PRIVATE
+        ${PROTO_PB_CC}
+        ${PROTO_GRPC_CC}
+    )
+
+    # Add include directory for generated files
+    target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${PROTO_OUT_DIR}>")
+
+    # Link protobuf and gRPC libraries
+    target_link_libraries(${PROJECT_NAME} PRIVATE protobuf::libprotobuf)
 endif()
 
 # Add include directories
@@ -83,9 +104,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE amsi Shlwapi Crypt32)
 
 # Set output directories
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
 ) 
 
 # Windows-specific configurations
@@ -118,14 +139,14 @@ if(MSVC)
     )
 endif()
 
-# Add post-build command to copy DLL to ext directory for Debug configuration
+# Add post-build command to copy DLL to ext directory
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin/Debug/ext"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/ext"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:${PROJECT_NAME}>"
-        "${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+        "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/ext/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_PDB_FILE:${PROJECT_NAME}>"    
-        "${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
+        "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
+        "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/ext/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
     COMMENT "Copying ${PROJECT_NAME} DLL and PDB to ext directory"
 ) 

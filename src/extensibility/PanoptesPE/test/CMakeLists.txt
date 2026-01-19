@@ -5,6 +5,11 @@ project(Test_PanoptesPE)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Set static runtime for MSVC - MUST BE SET BEFORE ANY TARGETS
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # LIEF build config. Set the default options for LIEF's project setup
 option(LIEF_DOC "Build LIEF docs" OFF)
 option(LIEF_PYTHON_API "Build LIEF Python API" OFF)
@@ -29,8 +34,8 @@ FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
 )
-# For Windows: Prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+# Use static CRT to match the rest of the project
+set(gtest_force_shared_crt OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 enable_testing()
@@ -70,14 +75,16 @@ target_link_libraries(${PROJECT_NAME} PRIVATE GTest::gtest_main LIEF::LIEF Crypt
 
 # Set output directories
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/tests"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/tests"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/tests"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/tests/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/tests/$<CONFIG>"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/tests/$<CONFIG>"
 ) 
 
 if(MSVC)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "CRT option")
-       
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+
     target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Release>:/MT>
         $<$<CONFIG:Debug>:/MTd>

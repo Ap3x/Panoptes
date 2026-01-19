@@ -145,22 +145,119 @@ For kernel development environment setup, see:
 - [Ap3x/Windows-Kernel-Development-Infrastructure](https://github.com/Ap3x/Windows-Kernel-Development-Infrastructure)
 - [Microsoft WDK Installation Guide](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)
 
-### CMake Build Options
+### Building Panoptes
+
+#### Prerequisites
+
+Ensure you have the following installed:
+- Visual Studio 2022 with C++ workload
+- Windows Driver Kit (WDK)
+- Vcpkg (with `VCPKG_ROOT` environment variable set)
+- CMake 3.15 or higher
+
+#### CMake Build Options
 
 The following CMake options are available during configuration:
 
 - `BUILD_DOC` (OFF by default): Build Doxygen documentation
 - `BUILD_WIX_INSTALLER` (OFF by default): Build the Wix MSI installer package
 - `BUILD_DRIVER` (OFF by default): Build the kernel driver package
-- `BUILD_GRPC` (OFF by default): Generate gRPC code from protobuf definitions
+- `BUILD_GRPC` (ON by default): Generate gRPC code from protobuf definitions
 
-Example CMake configuration:
+#### Building with CMake Presets (Recommended)
+
+##### Debug Build
+
 ```powershell
-mkdir build
-cd build 
-cmake --preset debug -DBUILD_DOC=ON -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=ON ..
-cd debug
-msbuild /p:Configuration=Debug Panoptes.sln
+# Configure for Debug
+cmake --preset debug -DBUILD_GRPC=ON
+
+# Build using CMake
+cmake --build build/debug --config Debug
+
+# Or build using MSBuild directly
+msbuild build/debug/Panoptes.sln /p:Configuration=Debug /p:Platform=x64 /m
+```
+
+Output: `./bin/Debug/`
+
+##### Release Build
+
+```powershell
+# Configure for Release
+cmake --preset release -DBUILD_GRPC=ON
+
+# Build using CMake
+cmake --build build/release --config Release
+
+# Or build using MSBuild directly
+msbuild build/release/Panoptes.sln /p:Configuration=Release /p:Platform=x64 /m
+```
+
+Output: `./bin/Release/`
+
+#### Building Specific Projects
+
+To build only the main service:
+
+**Debug:**
+```powershell
+msbuild build/debug/src/service/PanoptesService.vcxproj /p:Configuration=Debug /p:Platform=x64
+```
+
+**Release:**
+```powershell
+msbuild build/release/src/service/PanoptesService.vcxproj /p:Configuration=Release /p:Platform=x64
+```
+
+#### Building with Additional Options
+
+Enable all optional components:
+
+```powershell
+# Debug with all options
+cmake --preset debug -DBUILD_GRPC=ON -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=ON -DBUILD_DOC=ON
+cmake --build build/debug --config Debug
+
+# Release with all options
+cmake --preset release -DBUILD_GRPC=ON -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=ON -DBUILD_DOC=ON
+cmake --build build/release --config Release
+```
+
+#### Clean Build
+
+```powershell
+# Remove previous build artifacts
+Remove-Item -Recurse -Force build/debug
+Remove-Item -Recurse -Force build/release
+
+# Then configure and build as usual
+cmake --preset debug -DBUILD_GRPC=ON
+cmake --build build/debug --config Debug
+```
+
+#### Build Outputs
+
+| Configuration | Location | Executable | PDB |
+|---|---|---|---|
+| Debug | `./bin/Debug/` | PanoptesService.exe (71 MB) | PanoptesService.pdb |
+| Release | `./bin/Release/` | PanoptesService.exe | (embedded or separate) |
+
+#### MSBuild Command Reference
+
+Common MSBuild parameters:
+
+- `/p:Configuration=<Config>` - Build configuration (Debug, Release)
+- `/p:Platform=x64` - Platform architecture (x64, Win32)
+- `/m` - Build in parallel using all available cores
+- `/v:n` - Verbosity (q=quiet, m=minimal, n=normal, d=detailed)
+- `/t:Rebuild` - Clean and rebuild (instead of incremental)
+- `/t:Clean` - Clean build artifacts only
+
+Example with verbose output and parallel build:
+
+```powershell
+msbuild build/debug/Panoptes.sln /p:Configuration=Debug /p:Platform=x64 /m /v:normal
 ```
 
 ## Screenshots of Panoptes Features

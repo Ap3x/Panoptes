@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 4.0)
 
+# Only build KernelTestHost in Debug mode
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    return()
+endif()
+
 # Project name and language
-project(KernelTestHost 
+project(KernelTestHost
         VERSION 1.0
         LANGUAGES CXX)
 
@@ -28,8 +33,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 # Set output directories to match the MSVC structure
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/testing)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/testing)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/testing"
+)
 
 # Windows-specific settings
 if(WIN32)

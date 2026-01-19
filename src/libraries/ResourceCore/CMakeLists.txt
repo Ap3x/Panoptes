@@ -25,9 +25,10 @@ target_include_directories(${PROJECT_NAME}
 
 # Set Windows specific properties
 if(MSVC)
-    # Set properties for MSVC
+    # Set properties for MSVC - DLLs should use dynamic runtime
     set_target_properties(${PROJECT_NAME} PROPERTIES
         WINDOWS_EXPORT_ALL_SYMBOLS TRUE
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
     )
 endif()
 
@@ -46,8 +47,8 @@ install(FILES
 
 # Set output directories
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
 )
 

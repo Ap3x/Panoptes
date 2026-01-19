@@ -24,10 +24,9 @@ target_include_directories(${PROJECT_NAME}
 
 if(MSVC)
     # Enable static runtime linking
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
-    
+
     # Additional static runtime settings
     foreach(flag_var
         CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
@@ -36,10 +35,11 @@ if(MSVC)
             string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
         endif()
     endforeach()
-    
+
     # Set properties for MSVC
     set_target_properties(${PROJECT_NAME} PROPERTIES
         WINDOWS_EXPORT_ALL_SYMBOLS TRUE
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
     )
 endif()
 

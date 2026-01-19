@@ -29,7 +29,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Install Chocolatey
-        shell: pwsh
+        shell: powershell
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
@@ -78,7 +78,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Install Chocolatey
-        shell: pwsh
+        shell: powershell
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072

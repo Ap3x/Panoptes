@@ -19,12 +19,27 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Add Windows SDK tools to PATH
+        shell: pwsh
+        run: |
+          $sdkPaths = @(
+            "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64",
+            "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64",
+            "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64"
+          )
+          foreach ($path in $sdkPaths) {
+            if (Test-Path $path) {
+              echo "$path" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              Write-Host "Added to PATH: $path"
+              break
+            }
+          }
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
-        env:
-          CMAKE_GENERATOR: "Visual Studio 17 2022"
+          useVcpkgInstallArtifactCaching: true
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -33,7 +48,6 @@ jobs:
         run: cmake --preset debug -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-          CMAKE_GENERATOR: "Visual Studio 17 2022"
 
       - name: Build (Debug)
         run: msbuild build/debug/Panoptes.sln /p:Configuration=Debug /p:Platform=x64 /m
@@ -60,12 +74,27 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Add Windows SDK tools to PATH
+        shell: pwsh
+        run: |
+          $sdkPaths = @(
+            "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64",
+            "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64",
+            "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64"
+          )
+          foreach ($path in $sdkPaths) {
+            if (Test-Path $path) {
+              echo "$path" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              Write-Host "Added to PATH: $path"
+              break
+            }
+          }
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
-        env:
-          CMAKE_GENERATOR: "Visual Studio 17 2022"
+          useVcpkgInstallArtifactCaching: true
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2

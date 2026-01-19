@@ -28,15 +28,25 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install Chocolatey
+      - name: Install Chocolatey and Ninja
         shell: powershell
         run: |
+          # Ensure running as administrator
+          if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+            Write-Error "This script must be run as Administrator!"
+            exit 1
+          }
+
+          # Install Chocolatey
           Set-ExecutionPolicy Bypass -Scope Process -Force
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
-      - name: Install Ninja
-        run: choco install ninja -y
+          # Refresh environment variables to make choco available
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+          # Install Ninja
+          & choco install ninja -y
 
       - name: Configure CMake (Debug)
         run: cmake --preset debug -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON -G "Visual Studio 17 2022"
@@ -77,15 +87,25 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install Chocolatey
+      - name: Install Chocolatey and Ninja
         shell: powershell
         run: |
+          # Ensure running as administrator
+          if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+            Write-Error "This script must be run as Administrator!"
+            exit 1
+          }
+
+          # Install Chocolatey
           Set-ExecutionPolicy Bypass -Scope Process -Force
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
-      - name: Install Ninja
-        run: choco install ninja -y
+          # Refresh environment variables to make choco available
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+          # Install Ninja
+          & choco install ninja -y
 
       - name: Configure CMake (Release)
         run: cmake --preset release -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON -G "Visual Studio 17 2022"

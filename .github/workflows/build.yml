@@ -28,6 +28,9 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Install Ninja
+        run: choco install ninja -y
+
       - name: Configure CMake (Debug)
         run: cmake --preset debug -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON -G "Visual Studio 17 2022"
         env:
@@ -66,6 +69,9 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+
+      - name: Install Ninja
+        run: choco install ninja -y
 
       - name: Configure CMake (Release)
         run: cmake --preset release -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON -G "Visual Studio 17 2022"

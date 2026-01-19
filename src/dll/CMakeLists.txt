@@ -10,6 +10,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Enable static linking for both architectures
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# Build Detours library from source
+add_subdirectory(Detours-build)
+
 # Source files
 set(SOURCES
     src/dllmain.cpp
@@ -32,10 +35,6 @@ function(configure_target TARGET_NAME ARCH)
         set(OUTPUT_SUFFIX "x86")
     endif()
 
-    # Set Detours paths for this architecture
-    find_path(DETOURS_INCLUDE_DIRS "detours/detours.h")
-    find_library(DETOURS_LIBRARY detours REQUIRED)
-
     # Create target
     add_library(${TARGET_NAME} SHARED
         ${SOURCES}
@@ -51,11 +50,11 @@ function(configure_target TARGET_NAME ARCH)
     # Include directories
     target_include_directories(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${DETOURS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/Detours/src
     )
 
-    # Link dependencies
-    target_link_libraries(${TARGET_NAME} PRIVATE ${DETOURS_LIBRARY})
+    # Link dependencies against locally built Detours library
+    target_link_libraries(${TARGET_NAME} PRIVATE lib_detours)
 
     # Compiler definitions
     target_compile_definitions(${TARGET_NAME} PRIVATE

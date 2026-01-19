@@ -16,6 +16,7 @@
                 "gRPC_DIR": "vcpkg_installed/x64-windows-static/share/grpc",
                 "nlohmann_json_DIR": "vcpkg_installed/x64-windows-static/share/nlohmann_json",
                 "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug",
+                "VCPKG_APPLOCAL_DEPS": "OFF",
                 "PRESET_NAME": "Debug",
                 "x86_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86/",
                 "x64_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
@@ -36,6 +37,7 @@
                 "gRPC_DIR": "vcpkg_installed/x64-windows-static/share/grpc",
                 "nlohmann_json_DIR": "vcpkg_installed/x64-windows-static/share/nlohmann_json",
                 "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+                "VCPKG_APPLOCAL_DEPS": "OFF",
                 "PRESET_NAME": "Release",
                 "x86_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86/",
                 "x64_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"

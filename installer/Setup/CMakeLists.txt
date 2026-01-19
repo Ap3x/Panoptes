@@ -35,7 +35,7 @@ endif()
 target_include_directories(PanoptesSetup PRIVATE ${CATCH_INCLUDE_DIR})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
 )
 
 # Configure specific settings for different configurations

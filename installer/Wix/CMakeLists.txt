@@ -32,8 +32,7 @@ add_custom_command(
         -bindpath "${CMAKE_SOURCE_DIR}/assets/yara"
         -bindpath "${CMAKE_SOURCE_DIR}/assets"
         -bindpath "${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}"
-        -bindpath "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}"
-        -bindpath "${CMAKE_SOURCE_DIR}/bin/driver"
+        -bindpath "${CMAKE_SOURCE_DIR}/bin/Release/driver"
         -bindpath "${CMAKE_SOURCE_DIR}/assets/icons"
         -bindpath "${CMAKE_CURRENT_SOURCE_DIR}/assets"
         ${WIX_SOURCES}

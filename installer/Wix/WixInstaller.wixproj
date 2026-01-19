@@ -24,7 +24,7 @@
   </PropertyGroup>
   <ItemGroup>
     <BindPath Include="$(SolutionDir)assets\yara" />
-    <BindPath Include="$(SolutionDir)bin\bin\x64\Release\driver\PanoptesDriver" />
+    <BindPath Include="$(SolutionDir)bin\Release\driver" />
     <BindPath Include="$(SolutionDir)src\libraries\TrayNotificationsCore\assets" />
     <BindPath Include="$(SolutionDir)bin\x64\Release" />
     <BindPath Include="$(SolutionDir)bin\Win32\Release" />

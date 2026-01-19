@@ -28,15 +28,14 @@ elseif(DOXYGEN_FOUND AND NOT BUILD_DOC)
 endif(DOXYGEN_FOUND AND BUILD_DOC)
 
 
-add_subdirectory(src/service)
-add_subdirectory(src/libraries)
-
-add_subdirectory(src/extensibility)
-add_subdirectory(src/container)
+#add_subdirectory(src/service)
+#add_subdirectory(src/libraries)
+#add_subdirectory(src/extensibility)
+#add_subdirectory(src/container)
 add_subdirectory(src/dll)
-add_subdirectory(src/linter)
-add_subdirectory(src/scanner)
-add_subdirectory(src/testing)
+#add_subdirectory(src/linter)
+#add_subdirectory(src/scanner)
+#add_subdirectory(src/testing)
 
 if(BUILD_DRIVER)
     add_subdirectory(src/driver)

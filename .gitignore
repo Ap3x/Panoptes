@@ -20,6 +20,8 @@ obj
 docs/html
 Documentation
 *build*
+!.github/
+!.github/**
 CMakePresets.json
 *temp*
 !CMakeLists.txt

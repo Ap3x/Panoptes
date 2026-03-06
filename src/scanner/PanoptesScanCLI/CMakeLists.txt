@@ -52,14 +52,14 @@ if(BUILD_GRPC)
     protobuf_generate(
         TARGET ${PROJECT_NAME}
         IMPORT_DIRS ${PROTO_FILE_DIR}
-        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
+        PROTOC_EXE "${Protobuf_PROTOC_EXECUTABLE}"
         PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
     )
     
     protobuf_generate(
         TARGET ${PROJECT_NAME}
         LANGUAGE grpc
-        PROTOC_EXE "${CMAKE_BINARY_DIR}/${Protobuf_PROTOC_EXECUTABLE}"
+        PROTOC_EXE "${Protobuf_PROTOC_EXECUTABLE}"
         GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
         PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
         IMPORT_DIRS ${PROTO_FILE_DIR}

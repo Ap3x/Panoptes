@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.0)
+cmake_minimum_required(VERSION 3.15)
 project(Configuration CXX)
 
 # Set static runtime for MSVC - MUST BE SET BEFORE ANY TARGETS

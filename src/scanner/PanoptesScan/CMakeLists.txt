@@ -4,8 +4,6 @@ project(PanoptesScan VERSION 1.0.0 LANGUAGES CXX)
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_PREFIX_PATH "B:/vcpkg_installed/x64-windows-static")
-set(Protobuf_PROTOC_EXECUTABLE "B:/vcpkg_installed/x64-windows-static/tools/protobuf/protoc.exe")
 find_package(gRPC CONFIG REQUIRED)
 
 set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/src/panoptes.proto")
@@ -54,12 +52,14 @@ if(BUILD_GRPC)
     protobuf_generate(
         TARGET ${PROJECT_NAME}
         IMPORT_DIRS ${PROTO_FILE_DIR}
+        PROTOC_EXE "${Protobuf_PROTOC_EXECUTABLE}"
         PROTOC_OUT_DIR "${PROTO_BINARY_DIR}")
-    
+
     protobuf_generate(
         TARGET ${PROJECT_NAME}
         LANGUAGE grpc
         GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+        PROTOC_EXE "${Protobuf_PROTOC_EXECUTABLE}"
         PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
         IMPORT_DIRS ${PROTO_FILE_DIR}
         PROTOC_OUT_DIR "${PROTO_BINARY_DIR}")

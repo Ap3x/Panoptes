@@ -134,33 +134,75 @@ yr.exe compile <PATH_TO_YARA_RULES_FOLDER> -o rules.pkg
 
 ## Development Setup
 
-Required tools:
-- [Vcpkg](https://vcpkg.io/en/)
-- [LIEF Project](https://github.com/lief-project/LIEF)
-- Visual Studio with Windows Driver Kit
-- Test signing enabled
-- Virtual Machine configured for Windows Kernel Debugging using Windbg
+### Prerequisites
+
+- [Visual Studio 2022](https://visualstudio.microsoft.com/) with C++ desktop development workload
+- [vcpkg](https://vcpkg.io/en/) (included with Visual Studio or standalone)
+- [Windows Driver Kit (WDK)](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) (for kernel driver builds)
+- Test signing enabled (for driver development)
+- Virtual Machine configured for Windows Kernel Debugging using WinDbg
+
+Set the `VCPKG_ROOT` environment variable to your vcpkg installation:
+```powershell
+# If installed with Visual Studio
+$env:VCPKG_ROOT = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg"
+
+# Or set it permanently
+[System.Environment]::SetEnvironmentVariable("VCPKG_ROOT", "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg", "User")
+```
 
 For kernel development environment setup, see:
 - [Ap3x/Windows-Kernel-Development-Infrastructure](https://github.com/Ap3x/Windows-Kernel-Development-Infrastructure)
 - [Microsoft WDK Installation Guide](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)
 
+### Building with CMake
+
+The project uses a single CMake preset with the Visual Studio multi-config generator. You configure once and choose Debug/Release at build time.
+
+#### Configure
+```powershell
+cmake --preset default
+```
+
+#### Build
+```powershell
+# Debug build (with debug symbols for your code)
+cmake --build build/default --config Debug
+
+# Release build (optimized)
+cmake --build build/default --config Release
+```
+
+#### Build the Kernel Driver
+```powershell
+cmake --preset default -DBUILD_DRIVER=ON
+cmake --build build/default --config Debug --target PanoptesDriver
+```
+
+#### Run Tests
+```powershell
+cd bin/tests/Debug
+./PanoptesAMSITest.exe
+./PanoptesPETest.exe
+./PanoptesYaraTest.exe
+./PanoptesLinterTest.exe
+```
+
 ### CMake Build Options
 
-The following CMake options are available during configuration:
+The following options can be passed during configuration with `-D`:
 
-- `BUILD_DOC` (OFF by default): Build Doxygen documentation
-- `BUILD_WIX_INSTALLER` (OFF by default): Build the Wix MSI installer package
-- `BUILD_DRIVER` (OFF by default): Build the kernel driver package
-- `BUILD_GRPC` (OFF by default): Generate gRPC code from protobuf definitions
+| Option | Default | Description |
+|--------|---------|-------------|
+| `BUILD_DRIVER` | OFF | Build the kernel driver package (requires WDK) |
+| `BUILD_GRPC` | ON | Generate gRPC code from protobuf definitions |
+| `BUILD_DOC` | OFF | Build Doxygen documentation |
+| `BUILD_WIX_INSTALLER` | OFF | Build the Wix MSI installer package |
 
-Example CMake configuration:
+Example with multiple options:
 ```powershell
-mkdir build
-cd build 
-cmake --preset debug -DBUILD_DOC=ON -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=ON ..
-cd debug
-msbuild /p:Configuration=Debug Panoptes.sln
+cmake --preset default -DBUILD_DRIVER=ON -DBUILD_DOC=ON
+cmake --build build/default --config Release
 ```
 
 ## Screenshots of Panoptes Features

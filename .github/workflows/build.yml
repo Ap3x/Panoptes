@@ -9,9 +9,12 @@ on:
       - main
 
 jobs:
-  build-debug:
-    name: Build Debug
+  build:
+    name: Build ${{ matrix.config }}
     runs-on: [self-hosted, DESKTOP-N792BI5]
+    strategy:
+      matrix:
+        config: [Debug, Release]
 
     steps:
       - name: Checkout repository
@@ -28,101 +31,22 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install Chocolatey and Ninja
-        shell: powershell
-        run: |
-          # Ensure running as administrator
-          if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-            Write-Error "This script must be run as Administrator!"
-            exit 1
-          }
-
-          # Install Chocolatey
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-
-          # Refresh environment variables to make choco available
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-
-          # Install Ninja
-          & choco install ninja -y
-
-      - name: Configure CMake (Debug)
-        run: cmake --preset debug -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON -G "Visual Studio 17 2022"
+      - name: Configure CMake
+        run: cmake --preset default -DBUILD_DRIVER=ON -DBUILD_GRPC=ON
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
-      - name: Build (Debug)
-        run: msbuild build/debug/Panoptes.sln /p:Configuration=Debug /p:Platform=x64 /m
+      - name: Build
+        run: cmake --build build/default --config ${{ matrix.config }}
 
-      - name: Upload Debug Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: panoptes-debug
+          name: panoptes-${{ matrix.config }}
           path: |
-            bin/Debug/**/*.dll
-            bin/Debug/**/*.exe
-            bin/Debug/**/*.pdb
-            bin/tests/Debug/**/*.exe
-            bin/tests/Debug/**/*.pdb
-          if-no-files-found: warn
-
-  build-release:
-    name: Build Release
-    runs-on: [self-hosted, DESKTOP-N792BI5]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgJsonGlob: 'vcpkg.json'
-          useVcpkgInstallArtifactCaching: true
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Install Chocolatey and Ninja
-        shell: powershell
-        run: |
-          # Ensure running as administrator
-          if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-            Write-Error "This script must be run as Administrator!"
-            exit 1
-          }
-
-          # Install Chocolatey
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-
-          # Refresh environment variables to make choco available
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-
-          # Install Ninja
-          & choco install ninja -y
-
-      - name: Configure CMake (Release)
-        run: cmake --preset release -DBUILD_DOC=OFF -DBUILD_DRIVER=ON -DBUILD_WIX_INSTALLER=OFF -DBUILD_GRPC=ON -G "Visual Studio 17 2022"
-        env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-
-      - name: Build (Release)
-        run: msbuild build/release/Panoptes.sln /p:Configuration=Release /p:Platform=x64 /m
-
-      - name: Upload Release Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: panoptes-release
-          path: |
-            bin/Release/**/*.dll
-            bin/Release/**/*.exe
-            bin/Release/**/*.pdb
-            bin/tests/Release/**/*.exe
-            bin/tests/Release/**/*.pdb
+            bin/${{ matrix.config }}/**/*.dll
+            bin/${{ matrix.config }}/**/*.exe
+            bin/${{ matrix.config }}/**/*.pdb
+            bin/tests/${{ matrix.config }}/**/*.exe
+            bin/tests/${{ matrix.config }}/**/*.pdb
           if-no-files-found: warn

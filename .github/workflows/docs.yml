@@ -40,7 +40,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: Documentation
+          path: docs/Documentation
 
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

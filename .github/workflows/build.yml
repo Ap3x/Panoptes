@@ -8,25 +8,35 @@ on:
     branches:
       - main
 
+env:
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+
 jobs:
   build:
-    name: Build ${{ matrix.config }}
+    name: Build Release
     runs-on: windows-latest
-    strategy:
-      matrix:
-        config: [Debug, Release]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - name: Create vcpkg binary cache directory
+        run: mkdir -p "${{ github.workspace }}/vcpkg-cache"
+        shell: bash
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
-          useVcpkgInstallArtifactCaching: true
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -37,16 +47,16 @@ jobs:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
       - name: Build
-        run: cmake --build build/default --config ${{ matrix.config }}
+        run: cmake --build build/default --config Release
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: panoptes-${{ matrix.config }}
+          name: panoptes-Release
           path: |
-            bin/${{ matrix.config }}/**/*.dll
-            bin/${{ matrix.config }}/**/*.exe
-            bin/${{ matrix.config }}/**/*.pdb
-            bin/tests/${{ matrix.config }}/**/*.exe
-            bin/tests/${{ matrix.config }}/**/*.pdb
+            bin/Release/**/*.dll
+            bin/Release/**/*.exe
+            bin/Release/**/*.pdb
+            bin/tests/Release/**/*.exe
+            bin/tests/Release/**/*.pdb
           if-no-files-found: warn

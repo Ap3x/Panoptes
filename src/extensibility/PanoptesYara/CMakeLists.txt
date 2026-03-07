@@ -13,7 +13,9 @@ if(MSVC)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-set(YARA_DIR ${CMAKE_SOURCE_DIR}/external/yara-x-capi-v1.1.0-x86_64-pc-windows-msvc)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+set(YARA_DIR ${CMAKE_SOURCE_DIR}/external/yara-x-capi-v1.14.0-x86_64-pc-windows-msvc)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_subdirectory(test)

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.0)  # Required for WiX v4 support
+cmake_minimum_required(VERSION 3.15)
 project(PanoptesInstaller)
 
 find_program(WIX_COMMAND wix.exe
@@ -27,12 +27,12 @@ add_custom_command(
     OUTPUT ${OUTPUT_DIR}/PanoptesInstaller.msi
     COMMAND ${WIX_COMMAND} build
         -arch x64
-        -ext WixToolset.UI.wixext/5
-        -ext WixToolset.Util.wixext/5
+        -ext WixToolset.UI.wixext
+        -ext WixToolset.Util.wixext
         -bindpath "${CMAKE_SOURCE_DIR}/assets/yara"
         -bindpath "${CMAKE_SOURCE_DIR}/assets"
-        -bindpath "${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}"
-        -bindpath "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}"
+        -bindpath "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>"
+        -bindpath "${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG>"
         -bindpath "${CMAKE_SOURCE_DIR}/bin/driver"
         -bindpath "${CMAKE_SOURCE_DIR}/assets/icons"
         -bindpath "${CMAKE_CURRENT_SOURCE_DIR}/assets"
@@ -54,3 +54,4 @@ set(CPACK_WIX_VERSION "5")
 set(CPACK_WIX_ARCHITECTURE "x64")
 set(CPACK_WIX_UI_REF "WixUI_InstallDir")
 set(CPACK_WIX_EXTENSIONS "WixToolset.UI.wixext;WixToolset.Util.wixext")
+

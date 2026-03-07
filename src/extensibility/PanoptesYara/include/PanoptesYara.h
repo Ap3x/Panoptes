@@ -1,7 +1,9 @@
 #pragma once
 #include "ExtensibilityCore.h"
 #include <vector>
+extern "C" {
 #include "yara_x.h"
+}
 
 #define VERSION "1.0.0"
 using namespace std;

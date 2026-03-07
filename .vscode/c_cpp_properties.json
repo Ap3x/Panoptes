@@ -4,7 +4,7 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/external/yara-x-capi-v1.1.0-x86_64-pc-windows-msvc"
+                "${workspaceFolder}/external/yara-x-capi-v1.14.0-x86_64-pc-windows-msvc"
             ],
             "defines": [
                 "_DEBUG",

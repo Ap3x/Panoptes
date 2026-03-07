@@ -163,6 +163,28 @@ cd debug
 msbuild /p:Configuration=Debug Panoptes.sln
 ```
 
+#### Building the MSI Installer
+
+The MSI installer requires [WiX Toolset v5](https://wixtoolset.org/) and its extensions:
+
+```powershell
+# Install WiX v5 CLI tool
+dotnet tool install --global wix --version 5.0.0
+
+# Install required WiX extensions
+wix extension add -g WixToolset.UI.wixext/5.0.0
+wix extension add -g WixToolset.Util.wixext/5.0.0
+```
+
+Then configure and build:
+```powershell
+cmake --preset default -DBUILD_WIX_INSTALLER=ON -DBUILD_DRIVER=ON
+cmake --build build/default --config Release
+cmake --build build/default --config Release --target installer
+```
+
+The MSI will be output to `bin/installer/PanoptesInstaller.msi`.
+
 ## Screenshots of Panoptes Features
 ### Scanning and Detecting Malicious Activity Notification
 

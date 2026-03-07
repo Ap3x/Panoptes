@@ -17,7 +17,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /OPT:REF")
 endif()
 
-set(YARA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../external/yara-x-capi-v1.1.0-x86_64-pc-windows-msvc)
+set(YARA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../external/yara-x-capi-v1.14.0-x86_64-pc-windows-msvc)
 
 find_package(gRPC CONFIG REQUIRED)
 

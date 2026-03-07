@@ -28,3 +28,6 @@ CMakePresets.json
 !external/*
 external/LIEF*
 output.yarc
+speech_*
+.claude/*
+.wix/*

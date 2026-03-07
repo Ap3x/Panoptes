@@ -67,25 +67,25 @@ set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "/ENTRY:DriverEntry 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     ${CMAKE_CURRENT_SOURCE_DIR}/driver-files/Panoptes.inf
-    ${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/driver/${CMAKE_BUILD_TYPE}/Panoptes.inf
+    ${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/driver/$<CONFIG>/Panoptes.inf
     COMMENT "Copying INF file to output directory"
 )
 
 # Run Inf2Cat to create catalog file
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND "${x86_BUILD_TOOLS_PATH}Inf2Cat.exe" /driver:${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE} /os:10_x64 /verbose
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}"
+    COMMAND "${x86_BUILD_TOOLS_PATH}Inf2Cat.exe" /driver:${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG> /os:10_x64 /verbose
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG>"
     COMMENT "Running Inf2Cat to create catalog file"
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-  COMMAND "${x64_BUILD_TOOLS_PATH}/makecert.exe" -r -pe -ss PanoptesCertStore -n "CN=Panoptes" "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}/Panoptes.cer"
+  COMMAND "${x64_BUILD_TOOLS_PATH}/makecert.exe" -r -pe -ss PanoptesCertStore -n "CN=Panoptes" "${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG>/Panoptes.cer"
   COMMENT "Generating a driver certificate"
   AUTO
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-  COMMAND "${x64_BUILD_TOOLS_PATH}/signtool.exe" sign /a /v /fd sha256 /s PanoptesCertStore /n "Panoptes" /t http://timestamp.digicert.com "${CMAKE_SOURCE_DIR}/bin/driver/${CMAKE_BUILD_TYPE}/Panoptes.sys"
+  COMMAND "${x64_BUILD_TOOLS_PATH}/signtool.exe" sign /a /v /fd sha256 /s PanoptesCertStore /n "Panoptes" /t http://timestamp.digicert.com "${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG>/Panoptes.sys"
   COMMENT "Signing the driver"
 )
 

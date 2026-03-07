@@ -100,5 +100,6 @@
     },
     "cSpell.words": [
         "PANO"
-    ]
+    ],
+    "testMate.cpp.test.executables": "bin/tests/**/*Test*"
 }

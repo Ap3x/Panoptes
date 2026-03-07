@@ -11,7 +11,7 @@ on:
 jobs:
   build:
     name: Build ${{ matrix.config }}
-    runs-on: [self-hosted, DESKTOP-N792BI5]
+    runs-on: windows-latest
     strategy:
       matrix:
         config: [Debug, Release]

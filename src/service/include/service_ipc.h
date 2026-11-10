@@ -10,7 +10,6 @@ class PanoptesContainerClient {
 public:
 	PanoptesContainerClient(int ContainerPort);
 	bool SendPeScanRequest(std::string PePath, std::string FileHash);
-	bool SendMemoryScanRequest(DWORD ProcessId);
 };
 
 VOID RunServiceServer(LPVOID lpParam);

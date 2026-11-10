@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <vector>
 #include <sstream>
+#include <iomanip>
 
 
 bool IsRunningAsAdmin() {
@@ -65,18 +66,29 @@ std::string ToLower(std::string str) {
 	return str;
 }
 
-std::string GetCurrentPath()
+// The folder PanoptesService.exe is in. Used instead of the working directory, which
+// is System32 for an elevated prompt or a service started by the SCM
+std::string GetExecutableDirectory()
 {
 	char buffer[MAX_PATH];
-	DWORD length = GetCurrentDirectoryA(MAX_PATH, buffer);
+	DWORD length = GetModuleFileNameA(NULL, buffer, MAX_PATH);
 
-	if (length == 0)
+	if (length == 0 || length == MAX_PATH)
 	{
-		// Handle error - you might want to throw an exception or return an error code
 		return "";
 	}
 
-	return std::string(buffer);
+	std::string path(buffer, length);
+	return path.substr(0, path.find_last_of("\\/"));
+}
+
+bool HasCommandLineFlag(const char* flag) {
+	for (int i = 1; i < __argc; i++) {
+		if (_stricmp(__argv[i], flag) == 0) {
+			return true;
+		}
+	}
+	return false;
 }
 
 std::string GetBaseName(const std::string& path) {
@@ -92,4 +104,19 @@ std::string FormatTime(const std::time_t& time) {
 	std::strftime(buffer, sizeof(buffer), "%a %b %d %H:%M:%S %Y", &timeinfo);
 
 	return std::string(buffer);
+}
+
+std::string FormatSystemTime(const FILETIME& ft) {
+	SYSTEMTIME st;
+	FileTimeToSystemTime(&ft, &st);
+
+	std::ostringstream ss;
+	ss << std::setfill('0')
+	   << st.wYear << '/'
+	   << std::setw(2) << st.wMonth << '/'
+	   << std::setw(2) << st.wDay << ' '
+	   << std::setw(2) << st.wHour << ':'
+	   << std::setw(2) << st.wMinute << ':'
+	   << std::setw(2) << st.wSecond;
+	return ss.str();
 }

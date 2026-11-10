@@ -3,10 +3,12 @@
 
 typedef struct _PANO_PROCESS_INFO
 {
-	LIST_ENTRY ListEntry;
 	BOOLEAN is64Bit;
 	HANDLE ProcessId;
 	BOOLEAN Injected;
+	BOOLEAN ProtectedProcess;
+	BOOLEAN SignedImagesOnly; // Signature policy rejects the hook DLL, so it is not injected
+	BOOLEAN InjectionExcluded; // Image name is in the DontInject list, so it is not injected
 	BOOLEAN ntdllLoaded;
 	BOOLEAN kernel32Loaded;
 	BOOLEAN kernelBaseLoaded;

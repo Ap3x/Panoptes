@@ -6,16 +6,18 @@
 #include "hash.h"
 #include "pano_log.h"
 #include "utils.h"
+#include "service_constants.h"
 
-#include "TrayNotifications.h"
+#include "tray_notifications.h"
 #include "Configuration.hpp"
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <filesystem>
 #include <regex>
+#include <mutex>
+#include <chrono>
 #include <filesystem>
-#include "PanoptesAMSI.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -53,7 +55,7 @@ bool GetRegistryPortValue(DWORD& portValue)
 
 	// Open the key
 	LONG lResult = RegOpenKeyExA(
-		HKEY_LOCAL_MACHINE,
+		PANOPTES_REG_ROOT,
 		"SOFTWARE\\Panoptes",
 		0,
 		KEY_READ,
@@ -90,17 +92,6 @@ bool GetRegistryPortValue(DWORD& portValue)
 	return true;
 }
 
-bool isPathInExclusions(const std::vector<std::string>& exclusions, const std::string& fullPath)
-{
-	std::filesystem::path fullPathNormalized = std::filesystem::path(fullPath).lexically_normal();
-
-	return std::any_of(exclusions.begin(), exclusions.end(),
-		[&fullPathNormalized](const std::string& path) {
-			std::filesystem::path pathNormalized = std::filesystem::path(path).lexically_normal();
-			return fullPathNormalized.string().find(pathNormalized.string()) == 0;
-		});
-}
-
 bool CheckIfMalicious(std::string jsonString) {
 	nlohmann::json jsonObject = nlohmann::json::parse(jsonString);
 	if (jsonObject.contains("yara_scan") && jsonObject["yara_scan"].contains("detected_rules"))
@@ -112,15 +103,6 @@ bool CheckIfMalicious(std::string jsonString) {
 		}
 	}
 
-	if (jsonObject.contains("amsi_result"))
-	{
-		AmsiScanner::AMSI_RESULT_PANO amsiResult = jsonObject["amsi_result"];
-		if (amsiResult == AmsiScanner::AMSI_RESULT_PANO_DETECTED) {
-			return true;
-		}
-	}
-
-
 	return false;
 }
 
@@ -130,7 +112,7 @@ bool CreateRegistryEntryWithPort(DWORD dwPort) {
 
 	// Create or open the key
 	LONG lResult = RegCreateKeyExA(
-		HKEY_LOCAL_MACHINE,
+		PANOPTES_REG_ROOT,
 		"SOFTWARE\\Panoptes",
 		0,
 		NULL,
@@ -188,23 +170,6 @@ PanoptesContainerClient::PanoptesContainerClient(int containerPort) {
 	stub_ = PanoptesExtensibility::NewStub(channel);
 }
 
-bool PanoptesContainerClient::SendMemoryScanRequest(DWORD processId) {
-	AckMessage reply;
-	ClientContext g_context;
-
-	MemoryScanInfo request;
-	request.set_process_id(processId);
-
-	Status status = stub_->MemoryScan(&g_context, request, &reply);
-
-	if (!status.ok()) {
-		std::cout << status.error_code() << ": " << status.error_message()
-			<< std::endl;
-	}
-
-	return reply.ack_type();
-}
-
 bool PanoptesContainerClient::SendPeScanRequest(std::string pePath, std::string fileHash) {
 	AckMessage reply;
 	ClientContext context;
@@ -223,7 +188,7 @@ bool PanoptesContainerClient::SendPeScanRequest(std::string pePath, std::string 
 
 void SelfQueuePeScan(std::string pePath, std::string fileHash) {
 	auto configuration = serviceContext->config;
-	if (isPathInExclusions(configuration->m_exclusions, pePath)) {
+	if (Configuration::IsPathInList(configuration->m_exclusions, pePath)) {
 		return;
 	}
 
@@ -274,15 +239,12 @@ class PanoptesImpl : public PanoptesService::Service {
 			entry = loadedDB.UpdateEntry(fileHash, cleanMsg);
 		}
 
-		// The PE Module just provides extra analysis on top of the AMSI/Yara Scan
-		if (!request->has_pe_scan()) {
-			if (CheckIfMalicious(entry)) {
-				std::string displayMessage = "Malicious File Detected: " + GetBaseName(filePath);
-				TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
+		if (CheckIfMalicious(entry)) {
+			std::string displayMessage = "Malicious File Detected: " + GetBaseName(filePath);
+			TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
 
-				if (configuration->m_quartine) {
-					MoveFileToQuarantine(filePath);
-				}
+			if (configuration->m_quartine) {
+				MoveFileToQuarantine(filePath);
 			}
 		}
 
@@ -297,7 +259,7 @@ class PanoptesImpl : public PanoptesService::Service {
 		}
 
 		auto configuration = serviceContext->config;
-		if (isPathInExclusions(configuration->m_exclusions, fileToScan)) {
+		if (Configuration::IsPathInList(configuration->m_exclusions, fileToScan)) {
 			std::string message = "File is excluded from scan: " + fileToScan;
 			return ::grpc::Status(::grpc::StatusCode::UNKNOWN, message);
 		}
@@ -325,21 +287,10 @@ class PanoptesImpl : public PanoptesService::Service {
 				if (configuration->m_quartine) {
 					MoveFileToQuarantine(request->portable_executable_path());
 				}
-				
-				for (auto container : g_containerServerPorts) {
-					if (container.first == ContainerType::CONTAINER_TYPE_PE) {
-						PanoptesContainerClient client = PanoptesContainerClient(container.second);
-						client.SendPeScanRequest(request->portable_executable_path(), fileHash);
-					}
-				}
 			}
 		}
 		else {
-
 			for (auto container : g_containerServerPorts) {
-				if (container.first == ContainerType::CONTAINER_TYPE_PE) {
-					continue;
-				}
 				PanoptesContainerClient client = PanoptesContainerClient(container.second);
 				client.SendPeScanRequest(request->portable_executable_path(), fileHash);
 			}
@@ -368,6 +319,24 @@ class PanoptesImpl : public PanoptesService::Service {
 	}
 };
 
+// The running server, so StopServiceServer can shut it down from another thread.
+// g_serverStopping covers a stop that arrives before the server has been built
+static std::mutex g_serverLock;
+static grpc::Server* g_server = nullptr;
+static bool g_serverStopping = false;
+
+// How long calls in flight get to finish before StopServiceServer cancels them
+#define PANO_SERVER_SHUTDOWN_GRACE_MS 2000
+
+VOID StopServiceServer()
+{
+	std::lock_guard<std::mutex> lock(g_serverLock);
+	g_serverStopping = true;
+	if (g_server != nullptr) {
+		g_server->Shutdown(std::chrono::system_clock::now() + std::chrono::milliseconds(PANO_SERVER_SHUTDOWN_GRACE_MS));
+	}
+}
+
 void RunServiceServer(LPVOID lpParam)
 {
 	serviceContext = reinterpret_cast<PanoptesContext*>(lpParam);
@@ -385,6 +354,7 @@ void RunServiceServer(LPVOID lpParam)
 		auto threadError = &serviceContext->threadError;
 		bool threadState = threadError->load();
 		threadError->store(true);
+		return;
 	}
 
 	bool updatedReg = CreateRegistryEntryWithPort(selected_port);
@@ -394,5 +364,17 @@ void RunServiceServer(LPVOID lpParam)
 		threadError->store(true);
 	}
 
+	{
+		std::lock_guard<std::mutex> lock(g_serverLock);
+		if (g_serverStopping) {
+			server->Shutdown();
+		}
+		g_server = server.get();
+	}
+
+	// Returns once StopServiceServer has shut the server down
 	server->Wait();
+
+	std::lock_guard<std::mutex> lock(g_serverLock);
+	g_server = nullptr;
 }

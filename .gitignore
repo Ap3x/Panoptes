@@ -26,8 +26,8 @@ CMakePresets.json
 *temp*
 !CMakeLists.txt
 !external/*
-external/LIEF*
 output.yarc
 speech_*
 .claude/*
 .wix/*
+build

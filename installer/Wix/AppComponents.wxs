@@ -1,8 +1,6 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Fragment>
     <ComponentGroup Id="AppComponents" Directory="Extensibility">
-      <File Source="PanoptesAMSI.dll" />
-      <File Source="PanoptesPE.dll" />
       <File Source="PanoptesYara.dll" />
     </ComponentGroup>
     <ComponentGroup Id="MainComponents" Directory="INSTALLFOLDER">

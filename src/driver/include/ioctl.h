@@ -1,4 +1,9 @@
 #pragma once
-#include "driver_constants.h"
+#include <ntifs.h>
+#include "pano_events.h"
 
-#define IOCTL_TERMINATE_PROCESS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x900, METHOD_BUFFERED, FILE_ANY_ACCESS)
+/// @brief Creates the \Device\Panoptes device and symbolic link and registers the IOCTL dispatch routines
+NTSTATUS InitializeDriverLink(PDRIVER_OBJECT DriverObject);
+
+/// @brief Deletes the device and symbolic link created by InitializeDriverLink
+void RemoveDriverLink();

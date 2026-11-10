@@ -1,20 +1,17 @@
 #include "callbacks.h"
-#include "inject.h"
-#include "pano_query.h"
 #include <ntstrsafe.h>
 #include "shellcode.h"
+#include "event_queue.h"
+#include "inject_exclusions.h"
 
+RTL_AVL_TABLE g_ProcessList;
 
-LIST_ENTRY g_ProcessList{};
-KSPIN_LOCK g_ProcessListLock{};
-PVOID g_ObRegistrationHandle{};
-
+// https://github.com/wbenny/injdrv/blob/a8dadf43a09f33c33a3957a250cb7ee05a986608/src/injlib/injlib.c#L404
 PVOID
 NTAPI
 RtlxFindExportedRoutineByName(
 	_In_ PVOID DllBase,
-	_In_ PANSI_STRING ExportName
-)
+	_In_ PANSI_STRING ExportName)
 {
 	//
 	// RtlFindExportedRoutineByName is not exported by ntoskrnl until Win10.
@@ -35,9 +32,9 @@ RtlxFindExportedRoutineByName(
 	//
 
 	ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)RtlImageDirectoryEntryToData(DllBase,
-		TRUE,
-		IMAGE_DIRECTORY_ENTRY_EXPORT,
-		&ExportSize);
+																			TRUE,
+																			IMAGE_DIRECTORY_ENTRY_EXPORT,
+																			&ExportSize);
 
 	if (!ExportDirectory)
 	{
@@ -129,112 +126,97 @@ RtlxFindExportedRoutineByName(
 
 	NT_ASSERT(
 		(Function < (PVOID)ExportDirectory) ||
-		(Function > (PVOID)((ULONG_PTR)ExportDirectory + ExportSize))
-	);
+		(Function > (PVOID)((ULONG_PTR)ExportDirectory + ExportSize)));
 
 	return Function;
 }
 
-//QUERY_INFO_PROCESS ZwQueryInformationProcessPtr;
-//
-//NTSTATUS InitializeZwQueryInformationProcessCallback() {
-//	UNICODE_STRING routineName;
-//	RtlInitUnicodeString(&routineName, L"ZwQueryInformationProcess");
-//	//https://stackoverflow.com/questions/3707133/how-to-use-zwqueryinformationprocess-to-get-processimagefilename-in-a-kernel-dri
-//	ZwQueryInformationProcessPtr = (QUERY_INFO_PROCESS)MmGetSystemRoutineAddress(&routineName);
-//	if (ZwQueryInformationProcessPtr == NULL) {
-//		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Cannot resolve ZwQueryInformationProcess\n");
-//		return STATUS_INVALID_HANDLE;
-//	}
-//
-//	return STATUS_SUCCESS;
-//}
-
-OB_PREOP_CALLBACK_STATUS PreOperationCallback(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION OperationInformation)
+/// @brief Checks whether a process's binary signature mitigation policy would make code
+/// integrity reject the (non-Microsoft-signed) hook DLL. Chromium-based processes such as
+/// msedgewebview2.exe and msedge.exe set this on their children at creation. Loading the DLL
+/// into such a process fails, and with a kernel debugger attached CI also breaks in
+/// (CipReportAndReprieveUMCIFailure).
+/// @return TRUE if the process only allows Microsoft, Store or WHQL signed images. FALSE if it
+/// allows other images, or if the policy could not be queried (injection is then attempted,
+/// and at worst the load fails).
+static BOOLEAN RequiresMicrosoftSignedImages(PEPROCESS Process)
 {
-	PAGED_CODE();
-	UNREFERENCED_PARAMETER(RegistrationContext);
-	UNREFERENCED_PARAMETER(OperationInformation);
-	//if (OperationInformation->ObjectType == *IoDeviceObjectType)
-	//{
-	//	ULONG returnLength; 
-	//	PDEVICE_OBJECT deviceObject = (PDEVICE_OBJECT)OperationInformation->Object;
-	//	// Query the object name
-	//	NTSTATUS status = ObQueryNameString(deviceObject, NULL, 0, &returnLength);
-	//	if (status != STATUS_INFO_LENGTH_MISMATCH)
-	//	{
-	//		return OB_PREOP_SUCCESS;
-	//	}
-	//	// Allocate memory for the name information
-	//	POBJECT_NAME_INFORMATION objectNameInfo = NULL;
-	//	objectNameInfo = (POBJECT_NAME_INFORMATION)ExAllocatePool2(POOL_FLAG_NON_PAGED, returnLength, 'NveD');
-	//	if (objectNameInfo == NULL)
-	//	{
-	//		return OB_PREOP_SUCCESS;
-	//	}
-	//	// Get the object name
-	//	UNICODE_STRING deviceName;
-	//	// Initialize the UNICODE_STRING
-	//	RtlInitUnicodeString(&deviceName, NULL);
-	//	// Allocate a buffer for the device name
-	//	deviceName.Buffer = (PWCH)ExAllocatePool2(POOL_FLAG_NON_PAGED, returnLength, 'NveD');
-	//	if (deviceName.Buffer == NULL)
-	//	{
-	//		return OB_PREOP_SUCCESS;
-	//	}
-	//	status = ObQueryNameString(deviceObject, objectNameInfo, returnLength, &returnLength);
-	//	if (NT_SUCCESS(status))
-	//	{
-	//		// Copy the name to the output parameter
-	//		RtlCopyUnicodeString(&deviceName, &objectNameInfo->Name);
-	//	}
-	//	if (deviceName.Buffer && wcsstr(deviceName.Buffer, L"\\Device\\NamedPipe\\") != NULL)
-	//	{
-	//		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Named Pipe created: %wZ\n", deviceName.Buffer);
-	//	}
-	//	return OB_PREOP_SUCCESS;
-	//}
+	// A kernel handle opened with KernelMode access skips the access check, so this works
+	// from any process context
+	HANDLE processHandle = NULL;
+	NTSTATUS status = ObOpenObjectByPointer(
+		Process,
+		OBJ_KERNEL_HANDLE,
+		NULL,
+		0x1000, // PROCESS_QUERY_LIMITED_INFORMATION
+		*PsProcessType,
+		KernelMode,
+		&processHandle);
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Failed to open process to query its signature policy, status: 0x%X\n", status);
+		return FALSE;
+	}
 
-	return OB_PREOP_SUCCESS;
+	PROCESS_MITIGATION_POLICY_INFORMATION policyInfo{};
+	policyInfo.Policy = ProcessSignaturePolicy;
+	status = ZwQueryInformationProcess(processHandle, ProcessMitigationPolicy, &policyInfo, sizeof(policyInfo), NULL);
+	ZwClose(processHandle);
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Failed to query process signature policy, status: 0x%X\n", status);
+		return FALSE;
+	}
+
+	// The Audit* flags only log, so the DLL still loads with them
+	const PROCESS_MITIGATION_BINARY_SIGNATURE_POLICY &signaturePolicy = policyInfo.Data.SignaturePolicy;
+	return signaturePolicy.MicrosoftSignedOnly || signaturePolicy.StoreSignedOnly || signaturePolicy.MitigationOptIn;
 }
 
-//void PostOperationCallback(PVOID RegistrationContext,POB_POST_OPERATION_INFORMATION OperationInformation)
-//{
-//	UNREFERENCED_PARAMETER(OperationInformation);
-//	UNREFERENCED_PARAMETER(RegistrationContext);
-//}
+RTL_GENERIC_COMPARE_RESULTS NTAPI ProcessInfoCompareRoutine(PRTL_AVL_TABLE Table, PVOID FirstStruct, PVOID SecondStruct)
+{
+	UNREFERENCED_PARAMETER(Table);
+	ULONG_PTR first = (ULONG_PTR)((PPANO_PROCESS_INFO)FirstStruct)->ProcessId;
+	ULONG_PTR second = (ULONG_PTR)((PPANO_PROCESS_INFO)SecondStruct)->ProcessId;
+
+	if (first < second)
+	{
+		return GenericLessThan;
+	}
+	if (first > second)
+	{
+		return GenericGreaterThan;
+	}
+	return GenericEqual;
+}
+
+PVOID NTAPI ProcessInfoAllocateRoutine(PRTL_AVL_TABLE Table, CLONG ByteSize)
+{
+	UNREFERENCED_PARAMETER(Table);
+	return ExAllocatePool2(POOL_FLAG_NON_PAGED, ByteSize, 'corP');
+}
+
+VOID NTAPI ProcessInfoFreeRoutine(PRTL_AVL_TABLE Table, PVOID Buffer)
+{
+	UNREFERENCED_PARAMETER(Table);
+	ExFreePoolWithTag(Buffer, 'corP');
+}
 
 PPANO_PROCESS_INFO GetProcessInfo(HANDLE ProcessId)
 {
-	//KIRQL OldIRQL;
-	//ExAcquireSpinLock(&g_ProcessListLock, &OldIRQL);
-	PLIST_ENTRY entry = g_ProcessList.Flink;
-	while (entry != &g_ProcessList) {
-		PPANO_PROCESS_INFO processInfo = CONTAINING_RECORD(entry, PANO_PROCESS_INFO, ListEntry);
-		if (processInfo->ProcessId == ProcessId) {
-			return processInfo;
-		}
-		entry = entry->Flink;
-	}
-	//ExReleaseSpinLock(&g_ProcessListLock, NULL);
-	return NULL;
+	PANO_PROCESS_INFO key{};
+	key.ProcessId = ProcessId;
+	return (PPANO_PROCESS_INFO)RtlLookupElementGenericTableAvl(&g_ProcessList, &key);
 }
 
 VOID RemoveProcessInfo(HANDLE ProcessId)
 {
-	PLIST_ENTRY entry = g_ProcessList.Flink;
-	while (entry != &g_ProcessList) {
-		PPANO_PROCESS_INFO processInfo = CONTAINING_RECORD(entry, PANO_PROCESS_INFO, ListEntry);
-		if (processInfo->ProcessId == ProcessId) {
-			RemoveEntryList(entry);
-			return;
-		}
-		entry = entry->Flink;
-	}
-	return;
+	PANO_PROCESS_INFO key{};
+	key.ProcessId = ProcessId;
+	RtlDeleteElementGenericTableAvl(&g_ProcessList, &key);
 }
 
-void NTAPI KernelRoutine(PKAPC apc, PKNORMAL_ROUTINE* NormalRoutine, PVOID* NormalContext, PVOID* SystemArgument1, PVOID* SystemArgument2)
+void NTAPI KernelRoutine(PKAPC apc, PKNORMAL_ROUTINE *NormalRoutine, PVOID *NormalContext, PVOID *SystemArgument1, PVOID *SystemArgument2)
 {
 	UNREFERENCED_PARAMETER(NormalRoutine);
 	UNREFERENCED_PARAMETER(NormalContext);
@@ -244,7 +226,8 @@ void NTAPI KernelRoutine(PKAPC apc, PKNORMAL_ROUTINE* NormalRoutine, PVOID* Norm
 	ExFreePool(apc);
 }
 
-struct InjectArgs {
+struct InjectArgs
+{
 	PUNICODE_STRING DLLPath;
 	PUNICODE_STRING DllName;
 	PVOID DllHandle;
@@ -269,31 +252,46 @@ VOID InjectDllKernelApc(PVOID NormalContext, PVOID SystemArgument1, PVOID System
 	if (nullptr == pProcessId)
 	{
 		DbgPrint("InjectDll - pProcessId is null");
+		return;
 	}
 
 	PPANO_PROCESS_INFO pi = GetProcessInfo(pProcessId);
+	if (pi == nullptr)
+	{
+		DbgPrint("InjectDll - process is not tracked");
+		return;
+	}
+
 	ANSI_STRING loadDllRoutineName = RTL_CONSTANT_STRING("LoadLibraryExW");
 	PVOID shellcodeAddress = RtlxFindExportedRoutineByName(pi->kernel32BaseAddress, &loadDllRoutineName);
-
-
+	if (shellcodeAddress == nullptr)
+	{
+		// Queuing an APC to a NULL routine would crash the process
+		DbgPrint("Error: LoadLibraryExW was not found in kernel32.");
+		return;
+	}
 
 	UNICODE_STRING dllToInject;
-	UNICODE_STRING dllFullPathx64;
-	UNICODE_STRING dllFullPathx86;
-	RtlInitUnicodeString(&dllFullPathx64, L"C:\\Program Files\\Panoptes\\PanoptesDLLx64.dll");
-	RtlInitUnicodeString(&dllFullPathx86, L"C:\\Program Files\\Panoptes\\PanoptesDLLx86.dll");
 	PVOID allocatedAddressContainingDllFullPath = nullptr;
 
 	if (pi->is64Bit)
 	{
-		dllToInject = dllFullPathx64;
+		RtlInitUnicodeString(&dllToInject, L"C:\\Program Files\\Panoptes\\PanoptesDLLx64.dll");
 	}
 	else
 	{
-		dllToInject = dllFullPathx86;
+		RtlInitUnicodeString(&dllToInject, L"C:\\Program Files\\Panoptes\\PanoptesDLLx86.dll");
 	}
 
-	NTSTATUS status = ZwAllocateVirtualMemory(NtCurrentProcess(), &allocatedAddressContainingDllFullPath, 0, (PSIZE_T)&dllToInject.Length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	// Room for the path and its terminator. ZwAllocateVirtualMemory takes and returns a SIZE_T,
+	// so it gets its own variable rather than a pointer to the USHORT dllToInject.Length.
+	// The allocation is rounded up to whole pages, which are zero-filled
+	SIZE_T regionSize = dllToInject.Length + sizeof(WCHAR);
+
+	// A 32-bit process's LoadLibraryExW takes a 32-bit pointer, so its copy of the path must be
+	// below 2 GB. A ZeroBits value above 32 is a mask the allocation's address must fit in
+	ULONG_PTR zeroBits = pi->is64Bit ? 0 : 0x7FFFFFFF;
+	NTSTATUS status = ZwAllocateVirtualMemory(NtCurrentProcess(), &allocatedAddressContainingDllFullPath, zeroBits, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
 		DbgPrint("Error: Unable to allocate memory in the target process.");
@@ -301,22 +299,43 @@ VOID InjectDllKernelApc(PVOID NormalContext, PVOID SystemArgument1, PVOID System
 	}
 	RtlCopyMemory(allocatedAddressContainingDllFullPath, dllToInject.Buffer, dllToInject.Length);
 
+	// MEM_RELEASE frees the whole allocation and requires a size of 0
+	SIZE_T releaseSize = 0;
+
 	PKAPC pKapc = (PKAPC)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), 'tikt'); // Allocate the APC object
 	if (!pKapc)
 	{
 		DbgPrint("Error: Unable to allocate the APC object.");
-		ZwFreeVirtualMemory(NtCurrentProcess(), &allocatedAddressContainingDllFullPath, (PSIZE_T)&dllToInject.Length, MEM_RELEASE);  // Free the allocated memory
+		ZwFreeVirtualMemory(NtCurrentProcess(), &allocatedAddressContainingDllFullPath, &releaseSize, MEM_RELEASE); // Free the allocated memory
 		return;
 	}
 
-	KeInitializeApc(pKapc, KeGetCurrentThread(), OriginalApcEnvironment, KernelRoutine, NULL, (PKNORMAL_ROUTINE)(shellcodeAddress), UserMode, allocatedAddressContainingDllFullPath); // Initialize the APC
+	// User-mode APCs are delivered by the native 64-bit dispatcher. For a 32-bit process the
+	// routine is the 32-bit kernel32's LoadLibraryExW, which must run in 32-bit mode: wrapping
+	// the APC makes WOW64 switch modes and call it. Without this the dispatcher runs 32-bit
+	// code as 64-bit code and the process crashes
+	PVOID apcRoutine = shellcodeAddress;
+	PVOID apcContext = allocatedAddressContainingDllFullPath;
+	if (!pi->is64Bit)
+	{
+		status = PsWrapApcWow64Thread(&apcContext, &apcRoutine);
+		if (!NT_SUCCESS(status))
+		{
+			DbgPrint("Error: Unable to wrap the APC for a WOW64 process.");
+			ZwFreeVirtualMemory(NtCurrentProcess(), &allocatedAddressContainingDllFullPath, &releaseSize, MEM_RELEASE);
+			ExFreePool(pKapc);
+			return;
+		}
+	}
+
+	KeInitializeApc(pKapc, KeGetCurrentThread(), OriginalApcEnvironment, KernelRoutine, NULL, (PKNORMAL_ROUTINE)apcRoutine, UserMode, apcContext); // Initialize the APC
 
 	DbgPrint("Inserting APC to target thread");
 	if (!KeInsertQueueApc(pKapc, NULL, NULL, IO_NO_INCREMENT))
 	{
 		DbgPrint("Error: Unable to insert APC to target thread.");
-		ZwFreeVirtualMemory(NtCurrentProcess(), &allocatedAddressContainingDllFullPath, (PSIZE_T)&dllToInject.Length, MEM_RELEASE);  // Free the allocated memory
-		ExFreePool(pKapc); // Free the APC object
+		ZwFreeVirtualMemory(NtCurrentProcess(), &allocatedAddressContainingDllFullPath, &releaseSize, MEM_RELEASE); // Free the allocated memory
+		ExFreePool(pKapc);																											// Free the APC object
 		return;
 	}
 
@@ -339,10 +358,10 @@ NTSTATUS InstallKernelModeApcToInjectDll(HANDLE ProcessId)
 
 	pThread = KeGetCurrentThread();
 	KeInitializeApc(pKapc, pThread,
-		OriginalApcEnvironment,
-		KernelRoutine, NULL,
-		(PKNORMAL_ROUTINE)InjectDllKernelApc,
-		KernelMode, (PVOID)ProcessId);
+					OriginalApcEnvironment,
+					KernelRoutine, NULL,
+					(PKNORMAL_ROUTINE)InjectDllKernelApc,
+					KernelMode, (PVOID)ProcessId);
 	if (!KeInsertQueueApc(pKapc, NULL, NULL, IO_NO_INCREMENT))
 	{
 		DbgPrint("InstallKernelModeApcToInjectDll Failed to insert APC");
@@ -357,31 +376,20 @@ NTSTATUS InstallKernelModeApcToInjectDll(HANDLE ProcessId)
 	return STATUS_SUCCESS;
 }
 
-BOOLEAN Is64BitProcess(PEPROCESS targetProcess) {
-	UINT64* processAsUint64 = reinterpret_cast<UINT64*>(targetProcess);
-	PVOID* wow64ProcessPtr = reinterpret_cast<PVOID*>(processAsUint64 + 0x580 / sizeof(UINT64));
-	if (*wow64ProcessPtr == NULL)
-	{
-		return TRUE;
-	}
-	return FALSE;
+BOOLEAN Is64BitProcess(PEPROCESS targetProcess)
+{
+	// Rather than reading EPROCESS.WoW64Process at a fixed offset, which differs between
+	// Windows builds
+	return PsGetProcessWow64Process(targetProcess) == NULL;
 }
 
 VOID LoadImageNotifyRoutine(PUNICODE_STRING FullImageName, HANDLE ProcessId, PIMAGE_INFO ImageInfo)
 {
 	PAGED_CODE();
-	UNREFERENCED_PARAMETER(ImageInfo);
 
 	PPANO_PROCESS_INFO processInfo = GetProcessInfo(ProcessId);
-	if (!processInfo || processInfo->Injected)
+	if (!processInfo || processInfo->Injected || processInfo->ProtectedProcess || processInfo->SignedImagesOnly || processInfo->InjectionExcluded)
 	{
-		return;
-	}
-
-	if (PsIsProtectedProcess(PsGetCurrentProcess()))
-	{
-		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Skipping protected process %llu", (ULONG64)ProcessId);
-		RemoveProcessInfo(ProcessId);
 		return;
 	}
 
@@ -389,16 +397,16 @@ VOID LoadImageNotifyRoutine(PUNICODE_STRING FullImageName, HANDLE ProcessId, PIM
 	{
 		UNICODE_STRING ntdllLoadImage;
 		RtlInitUnicodeString(&ntdllLoadImage, L"ntdll.dll");
-		if (wcsstr(FullImageName->Buffer, ntdllLoadImage.Buffer) != NULL) {
-			//DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Loaded ntdll in %llu\n", (ULONG64)ProcessId);
+		if (wcsstr(FullImageName->Buffer, ntdllLoadImage.Buffer) != NULL)
+		{
 			processInfo->ntdllLoaded = TRUE;
 			return;
 		}
 
 		UNICODE_STRING kernel32LoadImage;
 		RtlInitUnicodeString(&kernel32LoadImage, L"kernel32.dll");
-		if (wcsstr(FullImageName->Buffer, kernel32LoadImage.Buffer) != NULL) {
-			//DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Loaded kernel32 in %llu\n", (ULONG64)ProcessId);
+		if (wcsstr(FullImageName->Buffer, kernel32LoadImage.Buffer) != NULL)
+		{
 			processInfo->kernel32Loaded = TRUE;
 			processInfo->kernel32BaseAddress = ImageInfo->ImageBase;
 			return;
@@ -406,8 +414,8 @@ VOID LoadImageNotifyRoutine(PUNICODE_STRING FullImageName, HANDLE ProcessId, PIM
 
 		UNICODE_STRING kernelbaseLoadImage;
 		RtlInitUnicodeString(&kernelbaseLoadImage, L"KernelBase.dll");
-		if (wcsstr(FullImageName->Buffer, kernelbaseLoadImage.Buffer) != NULL) {
-			//DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Loaded kernelbase in %llu\n", (ULONG64)ProcessId);
+		if (wcsstr(FullImageName->Buffer, kernelbaseLoadImage.Buffer) != NULL)
+		{
 			processInfo->kernelBaseLoaded = TRUE;
 			return;
 		}
@@ -416,190 +424,121 @@ VOID LoadImageNotifyRoutine(PUNICODE_STRING FullImageName, HANDLE ProcessId, PIM
 	{
 		PEPROCESS targetProcess = NULL;
 		NTSTATUS status = PsLookupProcessByProcessId(ProcessId, &targetProcess);
-		if (!NT_SUCCESS(status)) {
+		if (!NT_SUCCESS(status))
+		{
 			return;
 		}
 
 		PUNICODE_STRING processPath{};
 		status = SeLocateProcessImageName(targetProcess, &processPath);
-		if (!NT_SUCCESS(status)) {
+		if (!NT_SUCCESS(status))
+		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Failed to get process name, status: 0x%X\n", status);
+			ObDereferenceObject(targetProcess);
 			return;
 		}
 
-		processInfo->is64Bit = Is64BitProcess(targetProcess);
-		if (processInfo->is64Bit) {
+		// Checked just before injecting, so a list the service sent after the process started
+		// still applies. The result is kept so later image loads skip the process
+		if (IsInjectionExcluded(processPath))
+		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[*] Panoptes: Not injecting into (%llu) %wZ: it is in the DontInject list\n", (ULONG64)ProcessId, processPath);
+			processInfo->InjectionExcluded = TRUE;
+			ExFreePool(processPath);
+			ObDereferenceObject(targetProcess);
+			return;
+		}
+
+		// Checked here rather than at creation, so a policy turned on after creation but
+		// before kernel32 loads is also seen. The result is kept so later image loads skip
+		// the process without querying again
+		if (RequiresMicrosoftSignedImages(targetProcess))
+		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[*] Panoptes: Not injecting into (%llu) %wZ: it only loads Microsoft-signed images\n", (ULONG64)ProcessId, processPath);
+			processInfo->SignedImagesOnly = TRUE;
+			ExFreePool(processPath);
+			ObDereferenceObject(targetProcess);
+			return;
+		}
+
+		if (processInfo->is64Bit)
+		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Injecting into x64: (%llu) %wZ\n", (ULONG64)ProcessId, processPath);
 		}
-		else {
+		else
+		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Injecting Into x86: (%llu) %wZ\n", (ULONG64)ProcessId, processPath);
 		}
+
+		ExFreePool(processPath);
+		ObDereferenceObject(targetProcess);
 
 		InstallKernelModeApcToInjectDll(ProcessId);
 		processInfo->Injected = TRUE;
 	}
-
-	//PEPROCESS ProcessStruct;
-	//PsLookupProcessByProcessId(ProcessId, &ProcessStruct);
-	// We dont want to deal with trying to inject into protected processes
-	//if (PsIsProtectedProcess(ProcessStruct))
-	//{
-	//	//RemoveProcessInfoByProcessId(ProcessId);
-	//	return;
-	//}
-	//if (ZwQueryInformationProcessPtr == NULL)
-	//{
-	//	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Cannot resolve ZwQueryInformationProcess\n");
-	//	InitializeZwQueryInformationProcessCallback();
-	//}
-	//ZwQueryInformationProcessPtr(
-	//	ProcessStruct,
-	//	ProcessBasicInformation,
-	//	NULL,
-	//	0,
-	//	NULL
-	//);
-	//HANDLE processHandle;
-	//NTSTATUS status = ObOpenObjectByPointer(
-	//	ProcessStruct,
-	//	OBJ_KERNEL_HANDLE,
-	//	NULL,
-	//	PROCESS_ALL_ACCESS,
-	//	*PsProcessType,
-	//	KernelMode,
-	//	&processHandle
-	//);
-	//PROCESS_BASIC_INFORMATION pbi;
-	//ULONG returnLength;
-	//status = ZwQueryInformationProcessPtr(
-	//	processHandle,
-	//	ProcessBasicInformation,
-	//	&pbi,
-	//	sizeof(PROCESS_BASIC_INFORMATION),
-	//	&returnLength
-	//);
-	//if (!processInfo->LdrLoadDllRoutineAddress) {
-	//	ANSI_STRING ldrLoadDll;
-	//	RtlInitAnsiString(&ldrLoadDll, "LdrLoadDll");
-	//	UNICODE_STRING kernel32LoadImage;
-	//	RtlInitUnicodeString(&kernel32LoadImage, L"*\\ntdll.dll");
-	//	if (FsRtlIsNameInExpression(&kernel32LoadImage, FullImageName, TRUE, NULL)) {
-	//		processInfo->LdrLoadDllRoutineAddress = RtlFindExportedRoutineByName((PVOID)ImageInfo->ImageBase, ldrLoadDll.Buffer);
-	//		processInfo->NtdllLoaded = TRUE;
-	//		return;
-	//	}
-	//}
-	//else
-	//{
-	//	//UINT64 Process, ProcessHead;
-	//	//NTSTATUS status = PsLookupProcessByProcessId(ProcessId, (PEPROCESS*)&ProcessHead);
-	//	//if (!NT_SUCCESS(status))
-	//	//{
-	//	//	return;
-	//	//}
-	//	//Process = ProcessHead;
-	//	//UINT64 Thread, ThreadHead = *(UINT64*)(Process + 0x5e0) - 0x538; // Thread->ThreadListHead.Flink
-	//	//Thread = ThreadHead;
-	//	//bool found = false;
-	//	//do {
-	//	//	if (*(UINT32*)(Thread + 0x74) & (1 << 4)) { // Thread.Tcb.MiscFlags & Alertable
-	//	//		found = true;
-	//	//		break;
-	//	//	}
-	//	//	Thread = *(UINT64*)(Thread + 0x538) - 0x538; // Thread->ThreadListEntry.Flink
-	//	//} while (Thread != ThreadHead);
-	//	DbgBreakPoint();
-	//	InjectDLL(ProcessId, processInfo);
-	//}
-
 	return;
 }
 
 VOID ProcessCreateCallback(PEPROCESS Process, HANDLE ProcessId, PPS_CREATE_NOTIFY_INFO CreateInfo)
 {
-	UNREFERENCED_PARAMETER(Process);
+	if (CreateInfo != NULL)
+	{
+		// Protected processes are still tracked and reported; ProtectedProcess makes
+		// LoadImageNotifyRoutine skip injecting into them
+		PANO_PROCESS_INFO processInfo{};
+		processInfo.ProcessId = ProcessId;
+		processInfo.is64Bit = Is64BitProcess(Process);
+		processInfo.ProtectedProcess = PsIsProtectedProcess(Process);
+		// The signature policy is checked in LoadImageNotifyRoutine just before injecting
 
-	if (CreateInfo != NULL) {
-		UNICODE_STRING onlyProc;
-		RtlInitUnicodeString(&onlyProc, L"die.exe");
-		if (wcsstr(CreateInfo->ImageFileName->Buffer, onlyProc.Buffer) != NULL) {
-			PPANO_PROCESS_INFO processInfo = (PPANO_PROCESS_INFO)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(PANO_PROCESS_INFO), 'corP');
-			if (processInfo) {
-				processInfo->ProcessId = ProcessId;
-				processInfo->Injected = FALSE;
-				processInfo->ntdllLoaded = FALSE;
-				processInfo->kernel32Loaded = FALSE;
-				processInfo->kernelBaseLoaded = FALSE;
-
-				InsertTailList(&g_ProcessList, &processInfo->ListEntry);
-			}
-
-			PROCESS_MITIGATION_POLICY_INFORMATION policyInfo{};
-			NTSTATUS status = QueryProcessMitigationPolicy(ProcessId, &policyInfo);
-			if (!NT_SUCCESS(status)) {
-				DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Failed to get process mitigation policy, status: 0x%X\n", status);
-			}
+		if (!RtlInsertElementGenericTableAvl(&g_ProcessList, &processInfo, sizeof(processInfo), NULL))
+		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[-] Panoptes: Failed to track process %llu\n", (ULONG64)ProcessId);
 		}
 
-		//if (CreateInfo->ImageFileName->Buffer != NULL) {
-			//DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Process Starting: %wZ\n", CreateInfo->ImageFileName->Buffer);
+		// ImageFileName is only valid when FileOpenNameAvailable is set
+		PCUNICODE_STRING imageName = CreateInfo->FileOpenNameAvailable ? CreateInfo->ImageFileName : NULL;
+		// CommandLine can be NULL (e.g. minimal/pico processes)
+		PCUNICODE_STRING commandLine = CreateInfo->CommandLine;
+		PanoReportProcessEvent(
+			PANO_EVENT_PROCESS_CREATED,
+			(UINT64)ProcessId,
+			(UINT64)CreateInfo->ParentProcessId,
+			(UINT64)CreateInfo->CreatingThreadId.UniqueProcess,
+			(UINT64)CreateInfo->CreatingThreadId.UniqueThread,
+			imageName ? imageName->Buffer : NULL,
+			imageName ? imageName->Length / sizeof(WCHAR) : 0,
+			commandLine ? commandLine->Buffer : NULL,
+			commandLine ? commandLine->Length / sizeof(WCHAR) : 0);
 
 
-		//	//EventWriteProcessCreation(NULL, (UINT64)ProcessId, processPath->Buffer, (UINT64)CreateInfo->ParentProcessId, 0, (UINT64)&policyInfo);
-		//	EventWriteProcessCreation(NULL, (UINT64)ProcessId, processPath->Buffer, (UINT64)CreateInfo->ParentProcessId, 0, 0);
-		//	ExFreePool(processPath->Buffer);
-		//}
 	}
-	else {
+	else
+	{
 		RemoveProcessInfo(ProcessId);
+		PanoReportProcessEvent(PANO_EVENT_PROCESS_TERMINATED, (UINT64)ProcessId, 0, 0, 0, NULL, 0, NULL, 0);
 	}
 }
 
 NTSTATUS InitializeKernelCallbacks()
 {
 	PAGED_CODE();
-	NTSTATUS status;
-	//UNICODE_STRING callbackAltitude;
-	////https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/load-order-groups-and-altitudes-for-minifilter-drivers
-	//RtlInitUnicodeString(&callbackAltitude, L"1931");
 
-	//OB_CALLBACK_REGISTRATION callbackRegistration;
-	//OB_OPERATION_REGISTRATION operationRegistration;
-	//RtlSecureZeroMemory(&operationRegistration, sizeof(OB_OPERATION_REGISTRATION));
-	//RtlSecureZeroMemory(&callbackRegistration, sizeof(OB_CALLBACK_REGISTRATION));
-	//operationRegistration.ObjectType = PsProcessType;
-	//operationRegistration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
-	//operationRegistration.PreOperation = PreOperationCallback;
-	////operationRegistration.PostOperation = PostOperationCallback;
-	//operationRegistration.PostOperation = NULL;
-
-	//callbackRegistration.Version = OB_FLT_REGISTRATION_VERSION;
-	//callbackRegistration.OperationRegistrationCount = 1;
-	//callbackRegistration.Altitude = callbackAltitude;
-	//callbackRegistration.OperationRegistration = &operationRegistration;
-	//callbackRegistration.RegistrationContext = NULL;
-
-	//status = ObRegisterCallbacks(&callbackRegistration, &g_ObRegistrationHandle);
-	//if (!NT_SUCCESS(status)) {
-	//	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[!] Panoptes: Driver Failed to Set Object Registration Callbacks - Ensure /INTEGRITYCHECK is added to the linker options\n");
-	//	return status;
-	//}
-	//DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Set Object Registration Callbacks\n");
-
-	InitializeListHead(&g_ProcessList);
-	//KeInitializeSpinLock(&g_ProcessListLock);
-	status = PsSetCreateProcessNotifyRoutineEx(ProcessCreateCallback, FALSE);
-	if (!NT_SUCCESS(status)) {
-		//ObUnRegisterCallbacks(g_ObRegistrationHandle);
+	RtlInitializeGenericTableAvl(&g_ProcessList, ProcessInfoCompareRoutine, ProcessInfoAllocateRoutine, ProcessInfoFreeRoutine, NULL);
+	NTSTATUS status = PsSetCreateProcessNotifyRoutineEx(ProcessCreateCallback, FALSE);
+	if (!NT_SUCCESS(status))
+	{
 		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[!] Panoptes: Driver Failed to Set Process Creation Notify Routine Notify Routine - Ensure /INTEGRITYCHECK is added to the linker options\n");
 		return status;
 	}
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Set Process Creation Notify Callbacks\n");
 
 	status = PsSetLoadImageNotifyRoutine(LoadImageNotifyRoutine);
-	if (!NT_SUCCESS(status)) {
+	if (!NT_SUCCESS(status))
+	{
 		NTSTATUS removeStatus = PsSetCreateProcessNotifyRoutineEx(ProcessCreateCallback, TRUE);
-		if (!NT_SUCCESS(removeStatus)) {
+		if (!NT_SUCCESS(removeStatus))
+		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[!] Panoptes: Driver Failed to remove callback for Set Process Creation Notify Routine Notify Routine\n");
 			return removeStatus;
 		}
@@ -611,9 +550,15 @@ NTSTATUS InitializeKernelCallbacks()
 	return STATUS_SUCCESS;
 }
 
-VOID RemoveCallbacks() {
-	//ObUnRegisterCallbacks(g_ObRegistrationHandle);
+VOID RemoveCallbacks()
+{
 	PsSetCreateProcessNotifyRoutineEx(ProcessCreateCallback, TRUE);
 	PsRemoveLoadImageNotifyRoutine(LoadImageNotifyRoutine);
+
+	PVOID entry;
+	while ((entry = RtlGetElementGenericTableAvl(&g_ProcessList, 0)) != NULL)
+	{
+		RtlDeleteElementGenericTableAvl(&g_ProcessList, entry);
+	}
 	return;
 }

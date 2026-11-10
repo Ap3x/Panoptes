@@ -16,6 +16,31 @@
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "windows-msvc-x64"
+        },
+        {
+            "name": "Driver (WDK)",
+            "includePath": [
+                "${workspaceFolder}/src/driver/include",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/km",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/km/crt",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/shared",
+                "C:/Program Files (x86)/Windows Kits/10/Include/wdf/kmdf/1.33"
+            ],
+            "defines": [
+                "_DEBUG",
+                "_AMD64_",
+                "AMD64",
+                "_WIN64",
+                "NTDDI_VERSION=0x0A000008",
+                "_WIN32_WINNT=0x0A00",
+                "KMDF_VERSION_MAJOR=1",
+                "KMDF_VERSION_MINOR=33"
+            ],
+            "windowsSdkVersion": "10.0.26100.0",
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
         }
     ],
     "version": 4

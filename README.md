@@ -25,8 +25,7 @@ Panoptes is an Endpoint Detection and Response (EDR) system designed for educati
   - Thread/Process/Desktop handle operations
 - Userland NTAPI function hooks
 - Static Analysis using Yara-X with ability to use custom rules
-- PE file analysis (Headers, Digital Signatures, Sections) using LIEF
-- AMSI scanning integration
+- Authenticode signature verification (embedded and catalog) using WinVerifyTrust
 - JSON configuration file with built-in linter
 - Right-click context menu integration
 - Command-line interface for scanning
@@ -44,7 +43,7 @@ Panoptes is designed with flexibility in mind, allowing users to customize deplo
 <img width="90%" src="assets/diagrams/EDR_Overview.gif" alt="EDR Architecture Overview"/><br />
 </p>
 
-The system uses gRPC for communication between the main service, containers, and tools. The kernel component is configured as an ETW provider, enabling real-time event monitoring and scan queuing.
+The system uses gRPC for communication between the main service, containers, and tools. The kernel driver reports events directly to the main service through a device object: the service keeps a single general `GET_EVENT` IOCTL pending, and the driver completes it with the next event (a header containing the event's size and type, followed by the event data). The service does all of the logging; the driver only produces events. *(In progress: the shared event format is defined in `src/driver/include/pano_events.h`; the driver still reports through its legacy ETW provider until the device object is implemented.)*
 
 ## Core Components
 
@@ -92,18 +91,7 @@ Panoptes uses a container-based architecture for its modules, providing:
    - Uses [VirusTotal/Yara-X](https://github.com/VirusTotal/yara-x)
    - Supports custom compiled rules
    - Compatible with [awesome-yara](https://github.com/InQuest/awesome-yara) rules or many others
-
-2. **PanoptesPE**
-   - PE file analysis module
-   - Uses [LIEF Project](https://github.com/lief-project/LIEF)
-   - Provides detailed binary analysis
-   - Supports multiple binary formats in future Panoptes may be supported on other operating systems
-
-3. **PanoptesAMSI**
-   - Optional AMSI integration
-   - Uses AmsiScanBuffer
-   - Compatible with existing antivirus solutions
-   - Not an AMSI Scan Provider
+   - Verifies each scanned file's Authenticode signature with WinVerifyTrust and reports the result (signed, trusted, signer)
 
 ## Installation
 
@@ -136,7 +124,7 @@ yr.exe compile <PATH_TO_YARA_RULES_FOLDER> -o rules.pkg
 
 ### Prerequisites
 
-- [Visual Studio 2022](https://visualstudio.microsoft.com/) with C++ desktop development workload
+- [Visual Studio 2026](https://visualstudio.microsoft.com/) with C++ desktop development workload
 - [vcpkg](https://vcpkg.io/en/) (included with Visual Studio or standalone)
 - [Windows Driver Kit (WDK)](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) (for kernel driver builds)
 - Test signing enabled (for driver development)
@@ -179,13 +167,16 @@ cmake --preset default -DBUILD_DRIVER=ON
 cmake --build build/default --config Debug --target PanoptesDriver
 ```
 
-#### Run Tests
+#### Build and Run Tests
 ```powershell
-cd bin/tests/Debug
-./PanoptesAMSITest.exe
-./PanoptesPETest.exe
-./PanoptesYaraTest.exe
-./PanoptesLinterTest.exe
+cmake --preset tests
+cmake --build --preset tests --config Debug
+```
+
+```powershell
+cd bin/Debug/tests
+./Test_PanoptesYara.exe
+./Test_Linter.exe
 ```
 
 ### CMake Build Options
@@ -196,6 +187,7 @@ The following options can be passed during configuration with `-D`:
 |--------|---------|-------------|
 | `BUILD_DRIVER` | OFF | Build the kernel driver package (requires WDK) |
 | `BUILD_GRPC` | ON | Generate gRPC code from protobuf definitions |
+| `BUILD_TESTS` | OFF | Build the unit tests into `bin/<config>/tests` (enabled by the `tests` preset) |
 | `BUILD_DOC` | OFF | Build Doxygen documentation |
 | `BUILD_WIX_INSTALLER` | OFF | Build the Wix MSI installer package |
 
@@ -207,25 +199,22 @@ cmake --build build/default --config Release
 
 #### Building the MSI Installer
 
-The MSI installer requires [WiX Toolset v5](https://wixtoolset.org/) and its extensions:
+The MSI installer requires the WDK (for the driver) and the [WiX Toolset v5](https://wixtoolset.org/) CLI:
 
 ```powershell
-# Install WiX v5 CLI tool
-dotnet tool install --global wix --version 5.0.0
-
-# Install required WiX extensions
-wix extension add -g WixToolset.UI.wixext/5.0.0
-wix extension add -g WixToolset.Util.wixext/5.0.0
+dotnet tool install --global wix --version 5.0.2
 ```
 
-Then configure and build:
+The required WiX extensions (`WixToolset.UI.wixext`, `WixToolset.Util.wixext`) are installed automatically during CMake configuration. Then configure and build with the `installer` preset, which enables `BUILD_DRIVER` and `BUILD_WIX_INSTALLER` and builds every packaged binary in Release:
+
 ```powershell
-cmake --preset default -DBUILD_WIX_INSTALLER=ON -DBUILD_DRIVER=ON
-cmake --build build/default --config Release
-cmake --build build/default --config Release --target installer
+cmake --preset installer
+cmake --build --preset installer
 ```
 
-The MSI will be output to `bin/installer/PanoptesInstaller.msi`.
+In VS Code, select the **MSI Installer** configure preset and the **MSI Installer (Release)** build preset in the CMake Tools status bar, then run **CMake: Build**.
+
+The MSI will be output to `bin/Release/installer/PanoptesInstaller.msi`.
 
 ## Screenshots of Panoptes Features
 ### Scanning and Detecting Malicious Activity Notification
@@ -274,6 +263,12 @@ The MSI will be output to `bin/installer/PanoptesInstaller.msi`.
 
 - [ ] Component-specific documentation
 - [ ] Add more NTDLL hooks for monitoring
+
+## Future Plans
+
+### PanoptesLite
+
+A lighter, driver-less edition of Panoptes. Instead of the kernel driver, PanoptesLite would collect its telemetry only from ETW providers (for example `Microsoft-Windows-Kernel-Process` and `Microsoft-Windows-Kernel-File`), while still using the same extensibility (Yara) containers for scanning. This makes it installable where loading a kernel driver isn't possible or wanted, at the cost of the visibility and enforcement the driver provides.
 
 ## References
 

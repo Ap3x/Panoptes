@@ -1,8 +1,6 @@
 //Container Constants
 
-#define EXT_AMSI "PanoptesAMSI.dll"
 #define EXT_YARA "PanoptesYara.dll"
-#define EXT_PE "PanoptesPE.dll"
 #define EXT_ML "PanoptesML.dll"
 
 //Service Constants
@@ -11,7 +9,16 @@
 
 //Database Constants
 
-#define PANOPTES_DATABASE_PATH "C:\\ProgramData\\Panoptes\\Database"
+#define PANOPTES_DATABASE_PATH "C:\\ProgramData\\Panoptes\\database"
+
+//Registry Constants
+
+// Debug builds run unelevated, so the port is published under HKCU instead of HKLM
+#ifdef _DEBUG
+#define PANOPTES_REG_ROOT HKEY_CURRENT_USER
+#else
+#define PANOPTES_REG_ROOT HKEY_LOCAL_MACHINE
+#endif // _DEBUG
 
 //Logging Constants
 
@@ -27,11 +34,3 @@
 // Driver Constants
 
 #define KERNEL_DRIVER_SERVICE_NAME "Panoptes"
-
-// ETW Constants
-
-#define TRACE_NAMEW L"Panoptes"
-
-
-
-

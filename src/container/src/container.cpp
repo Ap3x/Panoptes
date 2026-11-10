@@ -13,10 +13,16 @@ ExtensibilityCore::PanoEntryPtr PanoEntry;
 ExtensibilityCore::PanoUnbindPtr PanoUnbind;
 
 PeMessageQueue* message_queue_pe_;
-MemoryMessageQueue* message_queue_mem_;
 std::atomic_bool isConnected = true;
 std::unique_ptr<PanoptesService::Stub> stub;
 int BindPort = 0;
+
+// Debug builds of the service run unelevated and publish the port under HKCU
+#ifdef _DEBUG
+#define PANOPTES_REG_ROOT HKEY_CURRENT_USER
+#else
+#define PANOPTES_REG_ROOT HKEY_LOCAL_MACHINE
+#endif // _DEBUG
 
 /// @brief Get the gRPC port value from the registry.
 /// @param portValue The port value that is read from the registry.
@@ -29,7 +35,7 @@ bool GetRegistryPortValue(DWORD& portValue)
 
 	// Open the key
 	LONG lResult = RegOpenKeyExA(
-		HKEY_LOCAL_MACHINE,
+		PANOPTES_REG_ROOT,
 		"SOFTWARE\\Panoptes",
 		0,
 		KEY_READ,
@@ -74,7 +80,7 @@ void MessageQueueThread() {
 		PeScan pe_data = message_queue_pe_->dequeue();
 		if (pe_data.PePath != "")
 		{
-			PanoEntry(&pe_data, NULL);
+			PanoEntry(&pe_data);
 		}
 	}
 }
@@ -174,6 +180,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	if (__argc < 1) {
 		printf("No Args");
 		exit(1);
+	}
+
+	// Extensibilities load their data (e.g. rules.pkg) relative to the working directory,
+	// so run from the container's folder rather than wherever it was launched from
+	char modulePath[MAX_PATH];
+	DWORD length = GetModuleFileNameA(NULL, modulePath, MAX_PATH);
+	if (length != 0 && length != MAX_PATH) {
+		std::string containerDir(modulePath, length);
+		SetCurrentDirectoryA(containerDir.substr(0, containerDir.find_last_of("\\/")).c_str());
 	}
 
 	std::string dllPath(__argv[1]);

@@ -8,6 +8,13 @@ using grpc::Status;
 
 std::unique_ptr<PanoptesService::Stub> stub_;
 
+// Debug builds of the service run unelevated and publish the port under HKCU
+#ifdef _DEBUG
+#define PANOPTES_REG_ROOT HKEY_CURRENT_USER
+#else
+#define PANOPTES_REG_ROOT HKEY_LOCAL_MACHINE
+#endif // _DEBUG
+
 /// @brief Get the Panoptes Service port value from the registry
 /// @param portValue The port value from the registry
 /// @return True if the port value was retrieved successfully, false otherwise
@@ -18,7 +25,7 @@ bool GetRegistryPortValue(DWORD& portValue) {
 
 	// Open the key
 	LONG lResult = RegOpenKeyExA(
-		HKEY_LOCAL_MACHINE,
+		PANOPTES_REG_ROOT,
 		"SOFTWARE\\Panoptes",
 		0,
 		KEY_READ,

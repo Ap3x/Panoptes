@@ -4,4 +4,7 @@
 #include "service_constants.h"
 #include "Configuration.hpp"
 
-ERRORCODE StartContainers(std::vector<Configuration::ContainerType> selectedExtensibility);
+ERRORCODE StartContainers();
+
+/// @brief Ends every container started by StartContainers. Safe to call if none were started
+void StopContainers();

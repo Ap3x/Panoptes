@@ -17,7 +17,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(YARA_DIR ${CMAKE_SOURCE_DIR}/external/yara-x-capi-v1.14.0-x86_64-pc-windows-msvc)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(BUILD_TESTS)
     add_subdirectory(test)
 endif()
 
@@ -29,6 +29,7 @@ set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/src/panoptes.proto")
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dllmain.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/yara-scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/signature.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/service_client_yara.cpp
     ${PROTO_FILE}
 )
@@ -36,7 +37,7 @@ file(GLOB SOURCES
 # Define header files
 set(HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/PanoptesYara.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../shared/ExtensibilityCore.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../core/ExtensibilityCore.h"
     "${YARA_DIR}/yara_x.h"
 )
 
@@ -100,7 +101,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared   
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core   
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../proto/build
     ${YARA_DIR}
 )
@@ -112,6 +113,7 @@ target_link_libraries(${PROJECT_NAME}
         gRPC::grpc++
         ntdll 
         Crypt32
+        wintrust
         kernel32
         user32
         gdi32
@@ -136,12 +138,17 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 # Add post-build command to copy DLL to ext directory for Debug configuration
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin/Debug/ext"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:${PROJECT_NAME}>"
-        "${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
-        "${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
+    COMMAND "$<$<CONFIG:Debug>:${CMAKE_COMMAND};-E;make_directory;${CMAKE_SOURCE_DIR}/bin/Debug/ext>"
+    COMMAND "$<$<CONFIG:Debug>:${CMAKE_COMMAND};-E;copy_if_different;$<TARGET_FILE:${PROJECT_NAME}>;${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_FILE_NAME:${PROJECT_NAME}>>"
+    COMMAND "$<$<CONFIG:Debug>:${CMAKE_COMMAND};-E;copy_if_different;$<TARGET_PDB_FILE:${PROJECT_NAME}>;${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>>"
+    COMMAND_EXPAND_LISTS
     COMMENT "Copying ${PROJECT_NAME} DLL and PDB to ext directory"
-) 
+)
+
+# The extension loads rules.pkg from the container's working directory (the binary directory)
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/assets/yara/rules.pkg"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/rules.pkg"
+    COMMENT "Copying Yara rules to the output directory"
+)

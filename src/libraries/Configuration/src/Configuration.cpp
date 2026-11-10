@@ -4,50 +4,85 @@
 // #include "panoptes.pb.h"
 #include <vector>
 #include <sstream>
+#include <algorithm>
+#include <cctype>
 
-#pragma region Utility Functions
-/// @brief Convert a string to a DWORD
-/// @param str The string to convert
-/// @return The DWORD value of the string
-DWORD StringToDWORD(const std::string& str) {
-	try {
-		unsigned long value = std::stoul(str, nullptr, 0);
-		return static_cast<DWORD>(value);
-	}
-	catch (const std::invalid_argument& e) {
-		// Handle invalid input
-		return 0; // or throw an exception, depending on your error handling strategy
-	}
-	catch (const std::out_of_range& e) {
-		// Handle out of range input
-		return 0; // or throw an exception, depending on your error handling strategy
-	}
+#pragma region Path Patterns
+
+static std::string NormalizeSeparators(std::string path)
+{
+	std::replace(path.begin(), path.end(), '/', '\\');
+	return path;
 }
 
-/// @brief Split a string into a vector of strings
-/// @param input The string to split
-/// @param delimiter The delimiter to split the string on
-/// @return A vector of strings
-std::vector<std::string> SplitString(const std::string& input, char delimiter = ',') {
-	std::vector<std::string> result;
-	std::stringstream ss(input);
-	std::string item;
+static std::vector<std::string> NormalizePatterns(std::vector<std::string> patterns)
+{
+	for (auto& pattern : patterns) {
+		pattern = NormalizeSeparators(pattern);
+	}
+	return patterns;
+}
 
-	while (std::getline(ss, item, delimiter)) {
-		result.push_back(item);
+static bool CharEqualsIgnoreCase(char a, char b)
+{
+	return std::tolower((unsigned char)a) == std::tolower((unsigned char)b);
+}
+
+// Matches the whole of text against a pattern of literal characters, * and ?. On a mismatch
+// it backtracks to the most recent * and lets it absorb one more character
+static bool WildcardMatch(const std::string& pattern, const std::string& text)
+{
+	size_t p = 0;
+	size_t t = 0;
+	size_t star = std::string::npos;
+	size_t starText = 0;
+
+	while (t < text.size()) {
+		if (p < pattern.size() && pattern[p] == '*') {
+			star = p++;
+			starText = t;
+		}
+		else if (p < pattern.size() && (pattern[p] == '?' || CharEqualsIgnoreCase(pattern[p], text[t]))) {
+			p++;
+			t++;
+		}
+		else if (star != std::string::npos) {
+			p = star + 1;
+			t = ++starText;
+		}
+		else {
+			return false;
+		}
 	}
 
-	return result;
+	while (p < pattern.size() && pattern[p] == '*') {
+		p++;
+	}
+	return p == pattern.size();
 }
 
-/// @brief Convert a string to lowercase
-/// @param str The string to convert
-/// @return The lowercase string
-std::string StrToLower(std::string str) {
-	std::transform(str.begin(), str.end(), str.begin(),
-		[](unsigned char c) { return std::tolower(c); });
-	return str;
+bool Configuration::IsPathInList(const std::vector<std::string>& patterns, const std::string& path)
+{
+	std::string normalizedPath = NormalizeSeparators(path);
+
+	for (const auto& pattern : patterns) {
+		if (pattern.empty()) {
+			continue;
+		}
+
+		if (pattern.find_first_of("*?") != std::string::npos) {
+			if (WildcardMatch(pattern, normalizedPath)) {
+				return true;
+			}
+		}
+		else if (normalizedPath.size() >= pattern.size() &&
+			_strnicmp(normalizedPath.c_str(), pattern.c_str(), pattern.size()) == 0) {
+			return true;
+		}
+	}
+	return false;
 }
+
 #pragma endregion
 
 /// @brief Constructor for the Configuration class
@@ -61,11 +96,11 @@ Configuration::Configuration(std::string configurationPath)
 void Configuration::Parse()
 {
 	m_data = nlohmann::json::parse(m_fileStream);
-	GetExtensibilitySelected();
 	GetScannerExclusions();
-	GetIgnoreDriver();
 	GetQuarantineMaliciousFiles();
-	GetEventProviders();
+	GetLogExclusions();
+	GetDontInject();
+	GetFileEvents();
 }
 
 /// @brief Check if the configuration file is valid
@@ -74,80 +109,63 @@ void Configuration::IsValidJson()
 	m_data = nlohmann::json::parse(m_fileStream);
 }
 
-/// @brief Get the event providers from the configuration file
-void Configuration::GetEventProviders() {
-	if (m_data["EventProviders"].is_array()) {
-
-		std::vector<std::string> selectedExtensibility = m_data["EventProviders"].template get<std::vector<std::string>>();
-
-		for (std::string containerTypeStr : selectedExtensibility) {
-			auto splitStr = SplitString(containerTypeStr, ',');
-			if (splitStr.size() != 3) {
-				throw std::runtime_error("Invalid Event Provider format");
-			}
-
-			std::string providerName = splitStr[0];
-			unsigned long providerMatchAnyKeyword = StringToDWORD(splitStr[1]);
-			unsigned long providerMatchAllKeyword = StringToDWORD(splitStr[2]);
-
-			auto eventProviderInfo = std::make_tuple(providerName, providerMatchAnyKeyword, providerMatchAllKeyword);
-			m_eventProviders.push_back(eventProviderInfo);
-		}
-	}
-	else {
-		throw std::runtime_error("EventProviders was not set in the the configuration");
-	}
+/// @brief Check that each setting has the right type, after IsValidJson
+void Configuration::ValidateSettings()
+{
+	GetScannerExclusions();
+	GetQuarantineMaliciousFiles();
+	GetLogExclusions();
+	GetDontInject();
+	GetFileEvents();
 }
 
-/// @brief Get the extensibility selected from the configuration file
-void Configuration::GetExtensibilitySelected()
+const std::vector<std::string>& Configuration::FileEventNames()
 {
-	if (m_data["ExtensibilitySelected"].is_array()) {
-		std::vector<std::string> selectedExtensibility = m_data["ExtensibilitySelected"].template get<std::vector<std::string>>();
+	// The service maps each one to a PANO_FILE_EVENT_GROUP bit (driver.cpp)
+	static const std::vector<std::string> names = {
+		"Create",             // files created, overwritten or superseded
+		"Write",              // one FileModified event per handle that wrote
+		"DeleteRename",       // deletes (including delete-on-close) and renames
+		"PipeMailslot",       // named pipe and mailslot creates and opens
+		"Security",           // security descriptor (permission/owner) changes
+		"ExtendedAttributes"  // extended attribute writes
+	};
+	return names;
+}
 
-		for (std::string containerTypeStr : selectedExtensibility) {
-			ContainerType containerType;
+/// @brief Get the optional list of file event groups the driver reports
+void Configuration::GetFileEvents() {
+	if (!m_data.contains("FileEvents")) {
+		m_fileEvents = FileEventNames();
+		return;
+	}
 
+	if (!m_data["FileEvents"].is_array()) {
+		throw std::runtime_error("FileEvents must be an array of event group names");
+	}
 
-			if (StrToLower(containerTypeStr) == "amsi") {
-				containerType = CONTAINER_TYPE_AMSI;
+	const auto& valid = FileEventNames();
+	std::vector<std::string> names = m_data["FileEvents"].template get<std::vector<std::string>>();
+	for (const auto& name : names) {
+		if (std::find(valid.begin(), valid.end(), name) == valid.end()) {
+			std::string list;
+			for (const auto& validName : valid) {
+				list += (list.empty() ? "" : ", ") + validName;
 			}
-			else if (StrToLower(containerTypeStr) == "pe") {
-				containerType = CONTAINER_TYPE_PE;
-			}
-			else if (StrToLower(containerTypeStr) == "yara") {
-				containerType = CONTAINER_TYPE_YARA;
-			}
-			else {
-				throw std::runtime_error("Invalid Container Type");
-			}
-
-			m_extensibility.push_back(containerType);
+			throw std::runtime_error("Unknown FileEvents entry \"" + name + "\". Valid entries: " + list);
 		}
 	}
-	else {
-		throw std::runtime_error("ExtensibilitySelected was not set in the the configuration");
-	}
+	m_fileEvents = names;
 }
 
 /// @brief Get the scanner exclusions from the configuration file
 void Configuration::GetScannerExclusions()
 {
 	if (m_data["Exclusions"].is_array()) {
-		m_exclusions = m_data["Exclusions"].template get<std::vector<std::string>>();
+		m_exclusions = NormalizePatterns(m_data["Exclusions"].template get<std::vector<std::string>>());
 	}
 	else {
 		throw std::runtime_error("Exclusions was not set in the the configuration");
-	}
-}
-
-/// @brief Get the ignore driver from the configuration file
-void Configuration::GetIgnoreDriver() {
-	if (m_data["IgnoreDriver"].is_boolean()) {
-		m_ignoreDriver = m_data["IgnoreDriver"].template get<bool>();
-	}
-	else {
-		throw std::runtime_error("IgnoreDriver was not set in the the configuration");
 	}
 }
 
@@ -159,6 +177,53 @@ void Configuration::GetQuarantineMaliciousFiles() {
 	else {
 		throw std::runtime_error("QuarantineMaliciousFiles was not set in the the configuration");
 	}
+}
+
+/// @brief Get the optional log exclusions from the configuration file
+void Configuration::GetLogExclusions() {
+	if (!m_data.contains("LogExclusions")) {
+		return;
+	}
+
+	if (m_data["LogExclusions"].is_array()) {
+		m_logExclusions = NormalizePatterns(m_data["LogExclusions"].template get<std::vector<std::string>>());
+	}
+	else {
+		throw std::runtime_error("LogExclusions must be an array of paths");
+	}
+}
+
+/// @brief Get the optional list of process image names the hook DLL is not injected into
+void Configuration::GetDontInject() {
+	if (!m_data.contains("DontInject")) {
+		return;
+	}
+
+	if (!m_data["DontInject"].is_array()) {
+		throw std::runtime_error("DontInject must be an array of process image names");
+	}
+
+	std::vector<std::string> names = NormalizePatterns(m_data["DontInject"].template get<std::vector<std::string>>());
+	for (const auto& name : names) {
+		if (name.empty()) {
+			throw std::runtime_error("DontInject entries must not be empty");
+		}
+		if (name.find_first_of("*?") != std::string::npos) {
+			throw std::runtime_error("DontInject entries do not support wildcards: \"" + name + "\"");
+		}
+		if (name.find('\\') == std::string::npos) {
+			continue; // A file name, matched in any folder
+		}
+
+		// A full path. The service converts the drive letter to the NT device the driver sees,
+		// so it must be an absolute path on a drive letter: C:\Folder\app.exe
+		bool absoluteDrivePath = name.size() > 3 && std::isalpha((unsigned char)name[0]) &&
+			name[1] == ':' && name[2] == '\\' && name.back() != '\\';
+		if (!absoluteDrivePath) {
+			throw std::runtime_error("DontInject entries must be a file name such as \"msedge.exe\" or a full path such as \"C:\\\\Tools\\\\app.exe\": \"" + name + "\"");
+		}
+	}
+	m_dontInject = names;
 }
 
 /// @brief Get the keys from the configuration file

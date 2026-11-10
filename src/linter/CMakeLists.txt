@@ -17,7 +17,9 @@ if(MSVC)
     endforeach()
 endif()
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test)
+if(BUILD_TESTS)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test)
+endif()
 
 # For non-MSVC compilers
 if(NOT MSVC)

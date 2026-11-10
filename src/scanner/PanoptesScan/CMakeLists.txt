@@ -93,9 +93,7 @@ endif()
 
 # Windows-specific configurations
 if(WIN32)
-    # Add PANOPTESAMSI_EXPORTS define for DLL exports
     target_compile_definitions(${PROJECT_NAME} PRIVATE
-        PANOPTESAMSI_EXPORTS
         _WINDOWS
         _USRDLL
     )

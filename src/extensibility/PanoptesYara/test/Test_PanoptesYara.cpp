@@ -28,4 +28,35 @@ namespace Yara {
 		std::vector<string> result = yaraScan->YaraScanFile(EICAR_PATH);
 		EXPECT_GT(result.size(), 0);
 	}
+
+	TEST(SignatureTest, NotePadIsTrusted) {
+		SignatureInfo info = VerifyFileSignature("C:\\Windows\\System32\\notepad.exe");
+		EXPECT_TRUE(info.isSigned);
+		EXPECT_TRUE(info.trusted);
+		EXPECT_TRUE(info.catalogSigned);
+		EXPECT_EQ(info.trustStatus, ERROR_SUCCESS);
+		EXPECT_FALSE(info.signer.empty());
+	}
+
+	TEST(SignatureTest, EmbeddedSignatureIsTrusted) {
+		// MpSigStub.exe ships with Defender and has an embedded signature
+		const char* path = "C:\\Windows\\System32\\MpSigStub.exe";
+		if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+			GTEST_SKIP() << "MpSigStub.exe is not present";
+		}
+
+		SignatureInfo info = VerifyFileSignature(path);
+		EXPECT_TRUE(info.isSigned);
+		EXPECT_TRUE(info.trusted);
+		EXPECT_FALSE(info.catalogSigned);
+		EXPECT_FALSE(info.signer.empty());
+	}
+
+	TEST(SignatureTest, EicarIsUnsigned) {
+		SignatureInfo info = VerifyFileSignature(EICAR_PATH);
+		EXPECT_FALSE(info.isSigned);
+		EXPECT_FALSE(info.trusted);
+		EXPECT_FALSE(info.catalogSigned);
+		EXPECT_TRUE(info.signer.empty());
+	}
 }

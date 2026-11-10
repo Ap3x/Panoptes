@@ -5,8 +5,9 @@
             "name": "default",
             "displayName": "Default",
             "description": "Default build using vcpkg (use --config Debug/Release at build time)",
-            "generator": "Visual Studio 17 2022",
+            "generator": "Visual Studio 18 2026",
             "binaryDir": "${sourceDir}/build/${presetName}",
+            "warnings": { "dev": false, "deprecated": false },
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
                 "VCPKG_TARGET_TRIPLET": "x64-windows-static",
@@ -17,6 +18,74 @@
                 "x86_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86/",
                 "x64_BUILD_TOOLS_PATH": "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
             }
+        },
+        {
+            "name": "tests",
+            "displayName": "Unit Tests",
+            "description": "Default configuration plus unit tests (output in bin/<config>/tests). Shares build/default so vcpkg dependencies are not rebuilt",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/build/default",
+            "cacheVariables": {
+                "BUILD_TESTS": "ON",
+                "Protobuf_PROTOC_EXECUTABLE": "${sourceDir}/build/default/vcpkg_installed/x64-windows-static/tools/protobuf/protoc.exe"
+            }
+        },
+        {
+            "name": "hook",
+            "displayName": "Hook DLLs Only",
+            "description": "Only the x64 and x86 hook DLLs (output in bin/<config>). Installs only Detours, in its own build directory",
+            "generator": "Visual Studio 18 2026",
+            "binaryDir": "${sourceDir}/build/hook",
+            "warnings": { "dev": false, "deprecated": false },
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+                "BUILD_SERVICE": "OFF",
+                "BUILD_CONTAINER": "OFF",
+                "BUILD_YARA": "OFF",
+                "BUILD_SCANNER": "OFF",
+                "BUILD_LINTER": "OFF",
+                "BUILD_HOOK": "ON"
+            }
+        },
+        {
+            "name": "hook-tests",
+            "displayName": "Hook DLLs and Tests",
+            "description": "Hook DLLs plus their tests (output in bin/<config>/tests). Shares build/hook",
+            "inherits": "hook",
+            "cacheVariables": {
+                "BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "installer",
+            "displayName": "MSI Installer",
+            "description": "Default configuration plus the driver and WiX MSI installer (output in bin/Release/installer). Shares build/default so vcpkg dependencies are not rebuilt",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/build/default",
+            "cacheVariables": {
+                "BUILD_DRIVER": "ON",
+                "BUILD_WIX_INSTALLER": "ON",
+                "Protobuf_PROTOC_EXECUTABLE": "${sourceDir}/build/default/vcpkg_installed/x64-windows-static/tools/protobuf/protoc.exe"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "default", "configurePreset": "default" },
+        {
+            "name": "tests",
+            "displayName": "Unit Tests",
+            "configurePreset": "tests",
+            "targets": [ "Test_PanoptesYara", "Test_Linter", "Test_PanoptesDLLx64", "Test_NtWriteVirtualMemoryx64", "Test_NtProtectVirtualMemoryx64", "Test_NtAllocateVirtualMemoryx64", "Test_NtReadVirtualMemoryx64", "Test_NtMapViewOfSectionx64", "Test_NtUnmapViewOfSectionx64", "Test_NtCreateThreadExx64", "Test_NtQueueApcThreadx64", "Test_NtSetInformationProcessx64", "PanoptesDLLx86" ]
+        },
+        { "name": "hook", "displayName": "Hook DLLs Only", "configurePreset": "hook" },
+        { "name": "hook-tests", "displayName": "Hook DLLs and Tests", "configurePreset": "hook-tests" },
+        {
+            "name": "installer",
+            "displayName": "MSI Installer (Release)",
+            "configurePreset": "installer",
+            "configuration": "Release",
+            "targets": [ "installer" ]
         }
     ]
 }

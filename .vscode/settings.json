@@ -98,8 +98,20 @@
         "scoped_allocator": "cpp",
         "typeindex": "cpp"
     },
+    "cmake.configureEnvironment": {
+        "VCPKG_ROOT": "C:/vcpkg"
+    },
+    "files.exclude": {
+        "assets": true,
+        "build": true
+    },
+    "C_Cpp.files.exclude": {
+        "**/.vscode": true,
+        "**/.vs": true,
+        "build/**": true
+    },
     "cSpell.words": [
         "PANO"
     ],
-    "testMate.cpp.test.executables": "bin/tests/**/*Test*"
+    "testMate.cpp.test.executables": "bin/**/tests/*Test*"
 }

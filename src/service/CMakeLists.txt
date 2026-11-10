@@ -16,13 +16,16 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/containers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/database.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/driver.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/events.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/driver_events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/grpc.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hook_events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pano_log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/error_message.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hash.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/mutex.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shutdown.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tray_notifications.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/PanoptesService.rc
     ${PROTO_FILE}
@@ -33,7 +36,7 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/containers.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/database.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/driver.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/events.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/driver_events.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/grpc.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/icon_resource.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pano_log.h
@@ -42,12 +45,13 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/error_message.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/hash.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/panoptes_service.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/tray_notifications.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/utils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/ResourceCore/include/ResourceCore.h
 )
 
 # Create executable
-add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS})
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 if(BUILD_GRPC)
     find_package(gRPC CONFIG REQUIRED)
@@ -99,9 +103,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../external
     ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/ResourceCore/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/Configuration/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/TrayNotificationsCore/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../extensibility/PanoptesAMSI/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../extensibility/shared
+    ${CMAKE_CURRENT_SOURCE_DIR}/../extensibility/core
     ${CMAKE_SOURCE_DIR}/assets/icons
     # ${CMAKE_CURRENT_SOURCE_DIR}/../extensibility/PE/include
     # ${CMAKE_CURRENT_SOURCE_DIR}/../extensibility/Yara/include
@@ -111,7 +113,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link internal libraries
 add_dependencies(${PROJECT_NAME}
     Configuration
-    TrayNotificationsCore
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE RocksDB::rocksdb)
@@ -125,11 +126,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Configuration
-    TrayNotificationsCore
     Crypt32
     Shlwapi
     Rpcrt4
-    Tdh
 )
 
 # Configure preprocessor definitions
@@ -150,18 +149,24 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
 ) 
 
-# Post-build command to copy config file
+# Post-build command to copy the default config file. Only copies when there is no config next to
+# the binary yet, so local edits are not overwritten by every build
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${CMAKE_SOURCE_DIR}/assets/panoptes.config
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/panoptes.config
+    COMMAND ${CMAKE_COMMAND}
+    -DSRC=${CMAKE_SOURCE_DIR}/assets/panoptes.config
+    -DDST=$<TARGET_FILE_DIR:${PROJECT_NAME}>/panoptes.config
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyIfMissing.cmake
 )
 
 if(MSVC)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
-        LINK_FLAGS "/SUBSYSTEM:WINDOWS"
-        WIN32_EXECUTABLE TRUE
+    )
+
+    # Debug builds run as a console app so the service can be stopped with Ctrl+C
+    target_link_options(${PROJECT_NAME} PRIVATE
+        $<IF:$<CONFIG:Debug>,/SUBSYSTEM:CONSOLE,/SUBSYSTEM:WINDOWS>
+        /ENTRY:WinMainCRTStartup
     )
 endif()
 

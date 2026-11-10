@@ -28,10 +28,8 @@ static const std::unordered_map<std::string, int> errorCodeMap = {
     {"ERROR_STARTING_SERVICE", ERROR_STARTING_SERVICE},
     {"ERROR_STOPPING_SERVICE", ERROR_STOPPING_SERVICE},
     {"CLEAN_HANDLE", CLEAN_HANDLE},
-    {"EXT_SELECTED", EXT_SELECTED},
     {"NOT_ADMIN", NOT_ADMIN},
     {"NO_CONFIG", NO_CONFIG},
-    {"START_TRACE", START_TRACE},
     {"GRPC_SERVER_ERROR", GRPC_SERVER_ERROR},
     {"EXT_INVALID", EXT_INVALID},
     {"DEBUGGER", DEBUGGER}
@@ -61,10 +59,8 @@ static const std::unordered_map<int, const char*> errorStringMap = {
     {ERROR_STARTING_SERVICE, "Failed to start service"},
     {ERROR_STOPPING_SERVICE, "Failed to stop service"},
     {CLEAN_HANDLE, "An error occured when attempting to clean up handles"},
-    {EXT_SELECTED, "No extensibility has been selected"},
     {NOT_ADMIN, "The program is not running as administrator"},
     {NO_CONFIG, "Not config file was provided"},
-    {START_TRACE, "Unable to start ETW trace session. Try Restarting Panoptes"},
     {GRPC_SERVER_ERROR, "An error occured attempting to start local server"},
     {EXT_INVALID, "An invalid extensibility was selected"},
     {DEBUGGER, "Debugger Detected"}

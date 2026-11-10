@@ -72,7 +72,7 @@ endif()
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src/extensibility/shared
+    ${CMAKE_SOURCE_DIR}/src/extensibility/core
     ${CMAKE_SOURCE_DIR}/src/container/include
 )
 

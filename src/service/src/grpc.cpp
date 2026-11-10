@@ -223,7 +223,15 @@ class PanoptesImpl : public PanoptesService::Service {
 		std::string fileHash = request->file_hash();
 		std::string filePath = request->portable_executable_path();
 		std::string json_string;
-		google::protobuf::util::MessageToJsonString(*request, &json_string, options);
+		// The log line, the database entry and the detection check below are all built from
+		// this JSON, so a scan result that cannot be converted is rejected rather than stored
+		// as an empty or partial entry
+		auto jsonStatus = google::protobuf::util::MessageToJsonString(*request, &json_string, options);
+		if (!jsonStatus.ok()) {
+			std::string message = "Failed to convert the scan result for " + filePath + " to JSON: " + jsonStatus.ToString();
+			std::cerr << message << std::endl;
+			return ::grpc::Status(::grpc::StatusCode::INTERNAL, message);
+		}
 		std::string cleanMsg = CleanUpProtobufMessage(json_string);
 		WriteToLogFile(cleanMsg + "\n");
 

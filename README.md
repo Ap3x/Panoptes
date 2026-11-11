@@ -17,6 +17,7 @@ Panoptes is an Endpoint Detection and Response (EDR) system designed for educati
 - Kernel driver with process, image load and file system minifilter callbacks ([details](src/driver/README.md))
 - Kernel-level DLL injection using a kernel Asynchronous Procedure Call (kAPC)
 - Userland ntdll hooks for code injection and process tampering techniques ([details](src/hook/README.md))
+- Behavioral detection: a Go rule engine matches sequences of events (injection, process hollowing, tampering, suspicious command lines and 187 LOLBAS techniques) as they stream from the service, and can kill or quarantine the process ([details](src/detector/README.md))
 - Static analysis using Yara-X with custom rules, and Authenticode signature verification using WinVerifyTrust ([details](src/extensibility/README.md))
 - Fault-isolated scanning: each scanning module runs in its own container process
 - Persistent storage using RocksDB, so files already scanned are not scanned again
@@ -24,7 +25,7 @@ Panoptes is an Endpoint Detection and Response (EDR) system designed for educati
 - JSON configuration file with a built-in linter
 - Right-click context menu integration and a command-line interface for scanning
 - MSI installer for easy installation and removal
-- Unit tests for the Yara module, the linter and every hooked API
+- Unit tests for the Yara module, the linter, the service, the detector and its rules, and every hooked API
 
 ## About the Name
 
@@ -38,13 +39,14 @@ Panoptes is designed with flexibility in mind, allowing users to customize deplo
 <img width="90%" src="assets/diagrams/EDR_Overview.gif" alt="EDR Architecture Overview"/><br />
 </p>
 
-Panoptes has four parts. The driver and the hook DLL only produce events; `PanoptesService` does all of the logging and decides what to scan. Each component's folder has a README with the details.
+The driver and the hook DLL only produce events; `PanoptesService` does all of the logging and decides what to scan. `PanoptesDetector` watches the service's events for attack behavior and reports what it finds back to the service, which decides how to respond. Each component's folder has a README with the details.
 
 | Component | Role |
 |-----------|------|
 | [Kernel driver](src/driver/README.md) (`Panoptes.sys`) | Process, image load and file system minifilter callbacks. Injects the hook DLL into new processes. |
 | [Hook DLL](src/hook/README.md) (`PanoptesDLLx64.dll`, `PanoptesDLLx86.dll`) | Hooks ntdll inside each injected process to catch code injection and process tampering. |
 | [`PanoptesService`](src/service/README.md) | Collects the driver's and the hooks' events, writes the log, queues scans, quarantines detections and shows tray notifications. Reads the [configuration](src/service/README.md#configuration). |
+| [`PanoptesDetector`](src/detector/README.md) | Matches behavioral rules (`rules\*.yaml`) against the event stream and reports detections to the service, which logs them, shows a notification and, with `EnforceDetectionActions`, kills or quarantines the process. The service starts it. |
 | [Containers](src/container/README.md) and [extensibility modules](src/extensibility/README.md) | Scan files for the service, each module in its own process. `PanoptesYara` is the core module. |
 | [Scanners](src/scanner/README.md) | `PanoptesScan` (right-click menu) and `PanoptesScanCLI` ask the service to scan a file. |
 | [Linter](src/linter/README.md) | Checks a configuration file. |
@@ -53,9 +55,9 @@ Panoptes has four parts. The driver and the hook DLL only produce events; `Panop
 How the components talk:
 - **Driver to service:** the driver's device object, `\\.\Panoptes`. The service keeps `IOCTL_PANOPTES_GET_EVENT` requests pending and the driver completes them with events (inverted call). The service configures the driver through IOCTLs on the same device.
 - **Hook DLL to service:** ETW. Each injected process writes to the `Panoptes.Hook` TraceLogging provider, which the service consumes through a real-time session.
-- **Service, containers and scanners:** gRPC (`proto/src/panoptes.proto`), on a port the service publishes in the registry.
+- **Service, containers, scanners and detector:** gRPC (`proto/src/panoptes.proto`), on a port the service publishes in the registry. The detector subscribes to the service's events (`SubscribeEvents`) and sends back detections (`ReportDetection`); the service only accepts both from `PanoptesDetector.exe` in its own folder.
 
-Every event ends up in one log, `C:\ProgramData\Panoptes\Logs\pano.log`, one JSON object per line. Created and modified PE files are scanned once their writes settle.
+Every event ends up in one log, `C:\ProgramData\Panoptes\Logs\pano.log`, one JSON object per line, including a `Detection` event for each detection and what the service did about it. The detector also keeps its own record, `detection.log`, with the events that matched. Both rotate at 5 MB. Created and modified PE files are scanned once their writes settle.
 
 ## Installation
 
@@ -67,13 +69,19 @@ Every event ends up in one log, `C:\ProgramData\Panoptes\Logs\pano.log`, one JSO
    Then restart your system
 3. Run the MSI installer
 4. Place compiled Yara-X rules (`rules.pkg`) in `C:\Program Files\Panoptes\` (see [compiling custom rules](src/extensibility/README.md#panoptesyara))
-5. Start `PanoptesService.exe` as Administrator
+5. Start `PanoptesService.exe` as Administrator. It starts the driver, the containers and `PanoptesDetector.exe`, which loads the behavioral rules from `C:\Program Files\Panoptes\rules\`
+6. Optionally set `"EnforceDetectionActions": true` in `C:\ProgramData\Panoptes\Panoptes.config` to let `kill` and `quarantine` rules act; without it every detection only alerts
 
 ## Usage
 
 - Right-click files and choose **Scan with Panoptes**, or use `PanoptesScanCLI.exe -file <file>` ([scanners](src/scanner/README.md))
 - Monitor tray notifications for detections
 - Check quarantine folder: `C:\ProgramData\Panoptes\Quarantine`
+- Review behavioral detections in `C:\ProgramData\Panoptes\Logs\detection.log`, or test rules offline by replaying a log with a Debug build or `go run` (the installed Release exe runs without a console and prints nothing; see the [detector README](src/detector/README.md#rule-development-without-the-service)):
+  ```powershell
+  cd src/detector
+  go run ./src -rules rules -replay C:\ProgramData\Panoptes\Logs\pano.log
+  ```
 - View logs in `C:\ProgramData\Panoptes\Logs`, or browse them by process with the [log viewer TUI](tools/README.md):
   ```powershell
   pip install textual
@@ -87,6 +95,7 @@ Every event ends up in one log, `C:\ProgramData\Panoptes\Logs\pano.log`, one JSO
 - [Visual Studio 2026](https://visualstudio.microsoft.com/) with C++ desktop development workload
 - [vcpkg](https://vcpkg.io/en/) (included with Visual Studio or standalone)
 - [Windows Driver Kit (WDK)](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) (for kernel driver builds)
+- [Go](https://go.dev/dl) (for the detector, `winget install GoLang.Go`; or configure with `-DBUILD_DETECTOR=OFF`)
 - Test signing enabled (for driver development)
 - Virtual Machine configured for Windows Kernel Debugging using WinDbg
 
@@ -137,6 +146,14 @@ cmake --build --preset tests --config Debug
 cd bin/Debug/tests
 ./Test_PanoptesYara.exe
 ./Test_Linter.exe
+./Test_Service.exe
+```
+
+The detector's tests, including every shipped rule, run with Go:
+
+```powershell
+cd src/detector
+go test ./...
 ```
 
 Each hooked API also has a test for both architectures, e.g. `Test_NtWriteVirtualMemoryx64.exe` and `Test_NtWriteVirtualMemoryx86.exe`. They only test anything in Debug builds; see the [hook README](src/hook/README.md#tests) for how they work, how to debug them, and how to run them on a KDNET target.
@@ -148,6 +165,7 @@ The following options can be passed during configuration with `-D`:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `BUILD_DRIVER` | OFF | Build the kernel driver package (requires WDK) |
+| `BUILD_DETECTOR` | ON | Build `PanoptesDetector` and copy its rules to `bin/<config>/rules` (requires Go) |
 | `BUILD_GRPC` | ON | Generate gRPC code from protobuf definitions |
 | `BUILD_TESTS` | OFF | Build the unit tests into `bin/<config>/tests` (enabled by the `tests` preset) |
 | `BUILD_DOC` | OFF | Build Doxygen documentation |
@@ -161,7 +179,7 @@ cmake --build build/default --config Release
 
 #### Building the MSI Installer
 
-The MSI installer requires the WDK (for the driver) and the [WiX Toolset v5](https://wixtoolset.org/) CLI:
+The MSI installer requires the WDK (for the driver), Go (for the detector) and the [WiX Toolset v5](https://wixtoolset.org/) CLI:
 
 ```powershell
 dotnet tool install --global wix --version 5.0.2
@@ -241,8 +259,7 @@ A lighter, driver-less edition of Panoptes. Instead of the kernel driver, Panopt
 - [Windows Security Event IDs](https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/default.aspx)
 - [LOL Drivers Yara Rules](https://github.com/magicsword-io/LOLDrivers/tree/main/detections/yara)
 - [Installing Test Certifications](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/installing-test-certificates)
-
-
+- [EQL sequences](https://www.elastic.co/guide/en/elasticsearch/reference/current/eql-syntax.html#eql-sequences): the model for the detector's `sequence by` rules
 - [LOLBAS Project](https://github.com/LOLBAS-Project/LOLBAS): source of the generated behavioral rules in `src/detector/rules/lolbas.yaml`
 
 ## License

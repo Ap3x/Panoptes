@@ -22,7 +22,10 @@ as Go requires. Run everything from this folder with `go test ./...`.
 ## Build
 
 The CMake build (`BUILD_DETECTOR`, on by default) runs `go build` into `bin\<config>` and copies
-`rules\` next to it, and TargetPackage includes both. The generated code in `src/pb` is
+`rules\` next to it, and TargetPackage includes both. Release builds it as a GUI-subsystem exe
+(`-ldflags=-H=windowsgui`) so the service's copy runs without a console or `conhost.exe`; it
+prints nothing when run from a terminal, so replay with a Debug build or a plain `go build`.
+Debug stays a console exe and shows its log in a console window. The generated code in `src/pb` is
 checked in. Regenerate it after changing `proto/src/panoptes.proto`:
 
 ```powershell
@@ -50,7 +53,9 @@ events from the service over `SubscribeEvents` and evaluates each one as it arri
 
 Each detection is appended to `-detection-log` as one JSON object per line, like `pano.log`.
 Live mode writes to `%ProgramData%\Panoptes\Logs\detection.log` by default. Replay writes a file
-only when `-detection-log` is given, so replaying test logs doesn't add to the real one.
+only when `-detection-log` is given, so replaying test logs doesn't add to the real one. Like
+`pano.log`, it rotates at 5 MB to `detection1.log`, `detection2.log`, and so on (old files are
+kept), and after a restart the detector continues in the newest one.
 
 ```json
 {"Time":"2026/11/10 21:05:48","Rule":"process_hollowing","Description":"...","Severity":"critical",

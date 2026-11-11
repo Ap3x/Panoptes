@@ -17,7 +17,9 @@ enable_testing()
 # Service code without dependencies on the driver, gRPC or the database, compiled directly
 add_executable(Test_Service
   Test_ProcessImages.cpp
+  Test_PanoLog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/process_images.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src/pano_log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/utils.cpp
 )
 target_include_directories(Test_Service PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)

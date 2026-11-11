@@ -18,7 +18,7 @@ option(BUILD_TESTS "Build unit tests into bin/<config>/tests" OFF)
 
 # The installer packages every component
 if(BUILD_WIX_INSTALLER)
-    foreach(COMPONENT SERVICE CONTAINER YARA SCANNER LINTER HOOK)
+    foreach(COMPONENT SERVICE CONTAINER YARA SCANNER LINTER HOOK DETECTOR)
         if(NOT BUILD_${COMPONENT})
             message(FATAL_ERROR "BUILD_WIX_INSTALLER packages every component, so it needs BUILD_${COMPONENT}")
         endif()

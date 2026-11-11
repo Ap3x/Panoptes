@@ -6,6 +6,12 @@
 
 ERRORCODE GetKernelServiceStatus();
 
+/// @brief Starts the Panoptes driver service. It is installed as demand start, so it is not
+/// running after a reboot or an MSI install until something starts it. Needs Administrators
+/// @return PANO_SERVICE_RUNNING if it is running (already, or now), PANO_SERVICE_STOPPED if it
+/// could not be started (e.g. test signing is off), NOT_INSTALLED, or CONTROL_SERVICE
+ERRORCODE StartKernelService();
+
 /// @brief Asks the driver to terminate a process (IOCTL_PANOPTES_TERMINATE_PROCESS)
 /// @param processId The ID of the process to terminate
 /// @return PANO_SUCCESS if the process was terminated, otherwise an error code

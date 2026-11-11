@@ -194,6 +194,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		}
 
 		errCode = GetKernelServiceStatus();
+		if (errCode == PANO_SERVICE_STOPPED)
+		{
+			// The driver is demand start: after a reboot or an MSI install it is installed but
+			// not running, so start it rather than fail
+			errCode = StartKernelService();
+		}
 		if (errCode != PANO_SERVICE_RUNNING)
 		{
 			return CleanupWithError(errCode);

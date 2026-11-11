@@ -25,7 +25,7 @@ set(HEADERS
 )
 
 # Create executable
-add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS})
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 if(BUILD_GRPC)
     find_package(gRPC CONFIG REQUIRED)
@@ -98,4 +98,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 if(MSVC)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+    # Release is a GUI exe so the service's containers run without a console (a console exe
+    # gets a hidden console and a conhost.exe child, even with CREATE_NO_WINDOW). Debug is a
+    # console exe so its output shows in a console window. Both start at WinMain
+    target_link_options(${PROJECT_NAME} PRIVATE
+        $<IF:$<CONFIG:Debug>,/SUBSYSTEM:CONSOLE,/SUBSYSTEM:WINDOWS>
+        /ENTRY:WinMainCRTStartup
+    )
 endif()

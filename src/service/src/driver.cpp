@@ -33,6 +33,36 @@ ERRORCODE GetKernelServiceStatus()
 	return serviceStatusReturn;
 }
 
+ERRORCODE StartKernelService()
+{
+	SC_HANDLE serviceControlManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
+	if (serviceControlManager == NULL) {
+		return CONTROL_SERVICE;
+	}
+	SC_HANDLE service = OpenServiceA(serviceControlManager, KERNEL_DRIVER_SERVICE_NAME, SERVICE_START | SERVICE_QUERY_STATUS);
+	if (service == NULL) {
+		DWORD error = GetLastError();
+		CloseServiceHandle(serviceControlManager);
+		return (error == ERROR_SERVICE_DOES_NOT_EXIST) ? NOT_INSTALLED : CONTROL_SERVICE;
+	}
+
+	// For a driver, StartService returns once DriverEntry has run, so there is no start pending
+	// state to wait out
+	ERRORCODE result = PANO_SERVICE_RUNNING;
+	if (!StartServiceA(service, 0, NULL)) {
+		DWORD error = GetLastError();
+		if (error != ERROR_SERVICE_ALREADY_RUNNING) {
+			// ERROR_INVALID_IMAGE_HASH (577): test signing is off, so the test-signed driver is refused
+			std::cerr << "Failed to start the " << KERNEL_DRIVER_SERVICE_NAME << " driver (error " << error << ")" << std::endl;
+			result = PANO_SERVICE_STOPPED;
+		}
+	}
+
+	CloseServiceHandle(service);
+	CloseServiceHandle(serviceControlManager);
+	return result;
+}
+
 ERRORCODE TerminateProcessByDriver(UINT64 processId)
 {
 	// A separate synchronous handle, since the event reader's handle is overlapped

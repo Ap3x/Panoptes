@@ -126,7 +126,19 @@ func runLive(ctx context.Context, eng *engine.Engine, reorder *engine.Reorderer,
 	sweep := time.NewTicker(5 * time.Second)
 	defer sweep.Stop()
 
-	var reporter *source.Service // separate connection for reports, opened lazily
+	// Reports go out from their own goroutine: a slow or unreachable service must not hold up
+	// matching (each report can take up to its timeout). It also writes detection.log, after
+	// the report, so the record says whether the service accepted it
+	matches := make(chan engine.Match, maxPendingReports)
+	defer close(matches)
+	go func() {
+		var reporter *source.Service // separate connection for reports, opened lazily
+		for m := range matches {
+			reported := report(ctx, &reporter, debugSvc, m)
+			writeDetection(dlog, m, reported)
+		}
+	}()
+
 	var lateReported uint64
 	for {
 		var ready []engine.Event
@@ -153,14 +165,27 @@ func runLive(ctx context.Context, eng *engine.Engine, reorder *engine.Reorderer,
 		for _, ev := range ready {
 			for _, m := range eng.Process(ev) {
 				log.Printf("detection: %s", m.Rule.Name)
-				reported := report(ctx, &reporter, debugSvc, m)
-				if dlog != nil {
-					if err := dlog.Write(m, time.Now(), &reported); err != nil {
-						log.Printf("detection log: %v", err)
-					}
+				select {
+				case matches <- m:
+				default:
+					// The service is far behind; keep the record rather than block matching
+					log.Printf("report queue full; %s not reported", m.Rule.Name)
+					writeDetection(dlog, m, false)
 				}
 			}
 		}
+	}
+}
+
+// Detections waiting to be reported before new ones are only written to detection.log
+const maxPendingReports = 256
+
+func writeDetection(dlog *detectionLog, m engine.Match, reported bool) {
+	if dlog == nil {
+		return
+	}
+	if err := dlog.Write(m, time.Now(), &reported); err != nil {
+		log.Printf("detection log: %v", err)
 	}
 }
 

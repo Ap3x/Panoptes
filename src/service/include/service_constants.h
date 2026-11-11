@@ -25,7 +25,7 @@
 #define LOG_FOLDER L"C:\\ProgramData\\Panoptes\\Logs\\"
 #define BASE_FILENAME  L"pano"
 #define FILE_EXTENSION L".log"
-#define MAX_FILE_SIZE 1024 * 1024 * 5 // 5 MB
+#define MAX_FILE_SIZE (1024 * 1024 * 5) // 5 MB
 
 //Error Constants
 

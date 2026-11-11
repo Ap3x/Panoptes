@@ -6,6 +6,7 @@
         <Directory Id="Extensibility" Name="ext"></Directory>
         <Directory Id="Tools" Name="tools"></Directory>
         <Directory Id="Assets" Name="assets"></Directory>
+        <Directory Id="RulesFolder" Name="rules"></Directory>
 			</Directory>
 		</StandardDirectory>
     <StandardDirectory Id="CommonAppDataFolder">

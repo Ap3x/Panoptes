@@ -7,6 +7,9 @@
       <File Source="PanoptesSetup.exe" />
       <File Source="PanoptesService.exe" Id="PanoptesMain" />
       <File Source="PanoptesContainer.exe" />
+      <!-- The service starts the detector from its own folder with the rules in rules\ (the
+           RulesComponents group is generated from src/detector/rules by CMakeLists.txt) -->
+      <File Source="PanoptesDetector.exe" />
       <File Source="rules.pkg" />
       <File Source="PanoptesDLLx64.dll" />
       <File Source="PanoptesDLLx86.dll" />

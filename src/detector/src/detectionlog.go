@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,22 +25,94 @@ func defaultDetectionLog() string {
 	return filepath.Join(root, "Panoptes", "Logs", "detection.log")
 }
 
+// Size at which the log continues in the next file, the same as pano.log's MAX_FILE_SIZE
+const maxDetectionLogSize = 5 * 1024 * 1024
+
 // detectionLog appends one JSON object per line (NDJSON) for each detection, like pano.log.
+// Like pano.log it continues in detection1.log, detection2.log, ... once a file reaches
+// maxSize, and on opening continues in the newest file already on disk.
 type detectionLog struct {
-	mu sync.Mutex
-	f  *os.File
+	mu        sync.Mutex
+	f         *os.File
+	dir       string // folder of the files
+	base, ext string // "detection", ".log"
+	number    int    // current file: base.ext for 0, else base<number>.ext
+	size      int64  // size of the current file
+	maxSize   int64
 }
 
 func openDetectionLog(path string) (*detectionLog, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	return openRotatingLog(path, maxDetectionLogSize)
+}
+
+func openRotatingLog(path string, maxSize int64) (*detectionLog, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	// Go opens files with FILE_SHARE_READ|FILE_SHARE_WRITE, so the log can be tailed while open
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+	ext := filepath.Ext(path)
+	l := &detectionLog{dir: dir, ext: ext, maxSize: maxSize,
+		base: strings.TrimSuffix(filepath.Base(path), ext)}
+	l.number = newestLogNumber(dir, l.base, ext)
+	if err := l.open(); err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+// newestLogNumber is the highest N among base.ext (0) and baseN.ext in dir; 0 when there are none.
+func newestLogNumber(dir, base, ext string) int {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return 0
 	}
-	return &detectionLog{f: f}, nil
+	newest := 0
+	for _, e := range entries {
+		name := strings.ToLower(e.Name())
+		lb, le := strings.ToLower(base), strings.ToLower(ext)
+		if e.IsDir() || !strings.HasPrefix(name, lb) || !strings.HasSuffix(name, le) ||
+			len(name) <= len(lb)+len(le) {
+			continue
+		}
+		digits := name[len(lb) : len(name)-len(le)]
+		if len(digits) > 9 || strings.Trim(digits, "0123456789") != "" {
+			continue
+		}
+		if n, err := strconv.Atoi(digits); err == nil && n > newest {
+			newest = n
+		}
+	}
+	return newest
+}
+
+func (l *detectionLog) path() string {
+	name := l.base
+	if l.number > 0 {
+		name += strconv.Itoa(l.number)
+	}
+	return filepath.Join(l.dir, name+l.ext)
+}
+
+// open opens the current file, moving on to the next number while it is already full.
+func (l *detectionLog) open() error {
+	for {
+		// Go opens files with FILE_SHARE_READ|FILE_SHARE_WRITE, so the log can be tailed while open
+		f, err := os.OpenFile(l.path(), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+		if err != nil {
+			return err
+		}
+		st, err := f.Stat()
+		if err != nil {
+			f.Close()
+			return err
+		}
+		if st.Size() < l.maxSize {
+			l.f, l.size = f, st.Size()
+			return nil
+		}
+		f.Close()
+		l.number++
+	}
 }
 
 // Write appends the detection. reported says whether the service accepted it; replay mode,
@@ -56,12 +130,24 @@ func (l *detectionLog) Write(m engine.Match, now time.Time, reported *bool) erro
 	line = append(line, '\n')
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	_, err = l.f.Write(line) // one write per line, so a reader never sees half a record
+	if l.f == nil || l.size >= l.maxSize {
+		// Full (or a previous open failed): continue in the next file
+		if l.f != nil {
+			l.f.Close()
+			l.f = nil
+			l.number++
+		}
+		if err := l.open(); err != nil {
+			return err
+		}
+	}
+	n, err := l.f.Write(line) // one write per line, so a reader never sees half a record
+	l.size += int64(n)
 	return err
 }
 
 func (l *detectionLog) Close() error {
-	if l == nil {
+	if l == nil || l.f == nil {
 		return nil
 	}
 	return l.f.Close()

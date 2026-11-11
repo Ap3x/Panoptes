@@ -15,7 +15,7 @@ The service publishes its gRPC port under `SOFTWARE\Panoptes` in the registry (`
 
 ## Logs
 
-Every event is written to `C:\ProgramData\Panoptes\Logs\pano.log` as one JSON object per line (NDJSON), with `Event` as the first key. The log rotates at 5 MB to `pano1.log`, `pano2.log`, and so on. Paths in `LogExclusions` are not logged but are still scanned. Debug builds also echo each event to the console.
+Every event is written to `C:\ProgramData\Panoptes\Logs\pano.log` as one JSON object per line (NDJSON), with `Event` as the first key. The log rotates at 5 MB to `pano1.log`, `pano2.log`, and so on (old files are kept); after a restart the service continues in the newest one. Paths in `LogExclusions` are not logged but are still scanned. Debug builds also echo each event to the console.
 
 Hook events arrive about a second after they happen, often after the process has exited. Their `Image` and `TargetImage` therefore come from the driver's `ProcessCreated` for that PID: the service remembers each image until a minute after the process exits, and picks the process that had that PID at the event's time. Processes that started before the service are looked up from Windows instead, and are empty if they have already exited.
 

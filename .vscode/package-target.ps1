@@ -3,7 +3,8 @@
 # bin\Debug, so only the binaries need to go to the target.
 #
 # Package layout:
-#   Panoptes\                 Service working folder (service, container, Yara, scanners)
+#   Panoptes\                 Service working folder (service, container, Yara, scanners, and
+#                             PanoptesDetector.exe with its rules\ when the build has it)
 #   Program Files\Panoptes\   Hook DLLs; the driver injects them from C:\Program Files\Panoptes
 #   Program Files\Panoptes\tests\
 #                             Hook tests (x64 and x86), when the build has them (BUILD_TESTS)
@@ -87,6 +88,21 @@ if ($hookTests) {
 }
 else {
     Write-Host 'No hook tests in the build (configure with BUILD_TESTS to include them); packaging without them.' -ForegroundColor Yellow
+}
+
+# The detector is optional (BUILD_DETECTOR). The service starts it from its own folder with the
+# rules in rules\
+if (Test-Path (Join-Path $BuildDir 'PanoptesDetector.exe')) {
+    $rules = @(Get-ChildItem (Join-Path $BuildDir 'rules') -Filter '*.yaml' -ErrorAction SilentlyContinue |
+        ForEach-Object { "rules\$($_.Name)" })
+    if (-not $rules) {
+        Write-Host "PanoptesDetector.exe is in $BuildDir but rules\ has no rules. Rebuild the PanoptesDetector target." -ForegroundColor Red
+        exit 1
+    }
+    $layout['Panoptes'] += @('PanoptesDetector.exe') + $rules
+}
+else {
+    Write-Host 'No PanoptesDetector.exe in the build (configure with BUILD_DETECTOR to include it); packaging without it.' -ForegroundColor Yellow
 }
 
 # Only clear a folder this script created, never an arbitrary path passed as -OutDir
@@ -178,9 +194,9 @@ if (Get-Process PanoptesService -ErrorAction SilentlyContinue) {
     }
 }
 
-# Containers started by hand and the scanners are not owned by the service, and anything
-# --stop could not stop is ended here
-$remaining = Get-Process PanoptesService, PanoptesContainer, PanoptesScan, PanoptesScanCLI -ErrorAction SilentlyContinue
+# Containers and detectors started by hand and the scanners are not owned by the service, and
+# anything --stop could not stop is ended here
+$remaining = Get-Process PanoptesService, PanoptesContainer, PanoptesDetector, PanoptesScan, PanoptesScanCLI -ErrorAction SilentlyContinue
 if ($remaining) {
     $remaining | Stop-Process -Force
     Start-Sleep -Seconds 1
@@ -290,6 +306,9 @@ sc.exe start Panoptes
 Write-Host ''
 Write-Host 'Next, from an elevated prompt in the Panoptes folder:'
 Write-Host '  .\PanoptesService.exe --driver'
+if (Test-Path (Join-Path $package 'Panoptes\PanoptesDetector.exe')) {
+    Write-Host '  (the service starts PanoptesDetector.exe; detections go to C:\ProgramData\Panoptes\Logs\detection.log)'
+}
 Write-Host '  .\PanoptesContainer.exe "<this folder>\Panoptes\ext\PanoptesYara.dll"'
 if (Test-Path $testDir) {
     Write-Host 'To run the hook tests (no elevation needed):'

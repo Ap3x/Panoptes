@@ -28,6 +28,11 @@ VOID HookTraceInit();
 /// @brief Unregisters the provider. Call after removing the hooks.
 VOID HookTraceUninit();
 
+/// @brief Whether the Log_* functions should write. FALSE on the thread running a Detours
+/// transaction (so the hooks do not report Detours patching ntdll), and while a second instance
+/// of this DLL loaded in the process does the logging instead. Defined in hook.cpp.
+BOOL HookLoggingEnabled();
+
 /// @brief NtWriteVirtualMemory wrote a PE image. Event "PEWritten".
 /// @param ProcessHandle The process written to.
 /// @param CurrentProcess Whether ProcessHandle is the current process.
@@ -59,6 +64,8 @@ VOID Log_ProtectionSetAttempt(HANDLE ProcessHandle, BOOL CurrentProcess, NTSTATU
 
 /// @brief NtQueueApcThread or NtQueueApcThreadEx2 queued an APC to a thread. Event "ApcQueued".
 /// TargetProcessId is the process that owns the thread; the event also carries TargetThreadId.
+/// Both are 0 when the handle lacks THREAD_QUERY_LIMITED_INFORMATION; the thread is still known to
+/// be remote, because local threads are matched by object rather than by ID.
 /// @param ThreadHandle The thread the APC was queued to.
 /// @param CurrentProcess Whether the thread is in the current process.
 /// @param Api The name of the hooked function.
@@ -92,9 +99,10 @@ VOID Log_ExecutableAllocated(HANDLE ProcessHandle, BOOL CurrentProcess, const ch
 /// @param CurrentProcess Whether ProcessHandle is the current process.
 /// @param Api The name of the hooked function.
 /// @param BaseAddress The address passed to the unmap call.
-/// @param Image Whether the view was a mapped image (MEM_IMAGE).
+/// @param IsImage Whether the view was a mapped image (MEM_IMAGE). Logged as "IsImage", since the
+/// service fills in "Image" with the process's image path.
 VOID Log_ExecutableUnmapped(HANDLE ProcessHandle, BOOL CurrentProcess, const char* Api,
-	PVOID BaseAddress, BOOL Image);
+	PVOID BaseAddress, BOOL IsImage);
 
 /// @brief NtMapViewOfSection or NtMapViewOfSectionEx mapped a view into another process. Mapping
 /// a shared section into a target is a way to inject code without NtWriteVirtualMemory.
@@ -105,9 +113,9 @@ VOID Log_ExecutableUnmapped(HANDLE ProcessHandle, BOOL CurrentProcess, const cha
 /// @param ViewSize The size of the view, as returned by the kernel.
 /// @param Protection The protection the caller requested.
 /// @param Executable Whether any committed page of the view is executable.
-/// @param Image Whether the view is a mapped image (MEM_IMAGE).
+/// @param IsImage Whether the view is a mapped image (MEM_IMAGE). Logged as "IsImage".
 VOID Log_RemoteViewMapped(HANDLE ProcessHandle, const char* Api, PVOID BaseAddress, SIZE_T ViewSize,
-	ULONG Protection, BOOL Executable, BOOL Image);
+	ULONG Protection, BOOL Executable, BOOL IsImage);
 
 /// @brief NtProtectVirtualMemory made a region starting with a PE image executable.
 /// Event "PEMadeExecutable".

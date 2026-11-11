@@ -243,3 +243,8 @@ A lighter, driver-less edition of Panoptes. Instead of the kernel driver, Panopt
 - [Installing Test Certifications](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/installing-test-certificates)
 
 
+- [LOLBAS Project](https://github.com/LOLBAS-Project/LOLBAS): source of the generated behavioral rules in `src/detector/rules/lolbas.yaml`
+
+## License
+
+Panoptes is licensed under the [GNU General Public License v3.0](LICENSE).

@@ -101,6 +101,7 @@ void Configuration::Parse()
 	GetLogExclusions();
 	GetDontInject();
 	GetFileEvents();
+	GetEnforceDetectionActions();
 }
 
 /// @brief Check if the configuration file is valid
@@ -117,6 +118,7 @@ void Configuration::ValidateSettings()
 	GetLogExclusions();
 	GetDontInject();
 	GetFileEvents();
+	GetEnforceDetectionActions();
 }
 
 const std::vector<std::string>& Configuration::FileEventNames()
@@ -224,6 +226,18 @@ void Configuration::GetDontInject() {
 		}
 	}
 	m_dontInject = names;
+}
+
+/// @brief Get the optional EnforceDetectionActions setting
+void Configuration::GetEnforceDetectionActions() {
+	if (!m_data.contains("EnforceDetectionActions")) {
+		return;
+	}
+
+	if (!m_data["EnforceDetectionActions"].is_boolean()) {
+		throw std::runtime_error("EnforceDetectionActions must be true or false");
+	}
+	m_enforceDetectionActions = m_data["EnforceDetectionActions"].template get<bool>();
 }
 
 /// @brief Get the keys from the configuration file

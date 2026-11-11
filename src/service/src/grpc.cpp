@@ -10,6 +10,10 @@
 
 #include "tray_notifications.h"
 #include "Configuration.hpp"
+#include "detector.h"
+#include "detector_stream.h"
+#include "process_images.h"
+#include <atomic>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -27,16 +31,36 @@ std::unique_ptr<PanoptesExtensibility::Stub> stub_;
 std::unique_ptr<PanoptesService::Stub> selfStub_;
 std::vector<std::pair<ContainerType, int>> g_containerServerPorts;
 PanoptesContext* serviceContext;
+// The port the server listens on, set once it has started. The detector RPCs use it to find
+// the calling process
+static std::atomic<int> g_serverPort{ 0 };
+
+// How long a SubscribeEvents call waits for events before checking whether it was cancelled
+#define PANO_DETECTOR_POLL_MS 250
+
+// A Windows header defines PERMISSION_DENIED as a macro, which breaks StatusCode::PERMISSION_DENIED
+#pragma push_macro("PERMISSION_DENIED")
+#undef PERMISSION_DENIED
+static ::grpc::Status PermissionDenied(const std::string& why) {
+	return ::grpc::Status(::grpc::StatusCode::PERMISSION_DENIED, why);
+}
+#pragma pop_macro("PERMISSION_DENIED")
+
+// "DETECTION_SEVERITY_MEDIUM" without its prefix, lowercased: "medium"
+static std::string EnumWord(const std::string& name, const std::string& prefix) {
+	std::string word = name.rfind(prefix, 0) == 0 ? name.substr(prefix.size()) : name;
+	std::transform(word.begin(), word.end(), word.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+	return word;
+}
 
 
 namespace fs = std::filesystem;
 
-void MoveFileToQuarantine(std::string filePath) {
+bool MoveFileToQuarantine(std::string filePath) {
 	std::string quarantinePath = "C:\\ProgramData\\Panoptes\\Quarantine";
 
-    if (!fs::exists(quarantinePath)) {
-        fs::create_directories(quarantinePath);
-    }
+    std::error_code error;
+    fs::create_directories(quarantinePath, error);
     std::filesystem::path sourcePath(filePath);
     std::filesystem::path destinationPath = fs::path(quarantinePath) / sourcePath.filename();
     try {
@@ -44,7 +68,9 @@ void MoveFileToQuarantine(std::string filePath) {
     }
     catch (const std::filesystem::filesystem_error& e) {
         std::cerr << "Error moving file to quarantine: " << e.what() << std::endl;
+        return false;
     }
+    return true;
 }
 
 bool GetRegistryPortValue(DWORD& portValue)
@@ -325,6 +351,82 @@ class PanoptesImpl : public PanoptesService::Service {
 		response->set_ack_type(AckType::SUCCESS);
 		return ::grpc::Status::OK;
 	}
+
+	// Streams every logged event to the detector until it disconnects or the service stops
+	::grpc::Status SubscribeEvents(::grpc::ServerContext* context, const ::DetectorHello* request, ::grpc::ServerWriter<::DetectorEvent>* writer) override {
+		std::string why;
+		if (!IsDetectorPeer(context->peer(), g_serverPort.load(), why)) {
+			std::cerr << "SubscribeEvents refused: " << why << std::endl;
+			return PermissionDenied(why);
+		}
+
+		std::vector<std::string> eventNames(request->event_names().begin(), request->event_names().end());
+		auto subscription = DetectorSubscription::Open(eventNames);
+		if (subscription == nullptr) {
+			return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED, "too many detectors subscribed, or the service is stopping");
+		}
+		std::cout << "Detector " << request->version() << " subscribed to events" << std::endl;
+
+		std::vector<DetectorEventRecord> batch;
+		::DetectorEvent message;
+		while (!context->IsCancelled() && subscription->Wait(batch, PANO_DETECTOR_POLL_MS)) {
+			for (auto& record : batch) {
+				message.set_sequence(record.Sequence);
+				message.set_timestamp(record.Timestamp);
+				message.set_json(std::move(record.Json));
+				// Blocks while the detector is behind; the publisher keeps queueing (or
+				// dropping) meanwhile, so the event threads are never held up
+				if (!writer->Write(message)) {
+					std::cout << "Detector disconnected" << std::endl;
+					return ::grpc::Status::OK;
+				}
+			}
+		}
+		return ::grpc::Status::OK;
+	}
+
+	// Logs a detection to pano.log, notifies, and carries out its action
+	::grpc::Status ReportDetection(::grpc::ServerContext* context, const ::Detection* request, ::AckMessage* response) override {
+		std::string why;
+		if (!IsDetectorPeer(context->peer(), g_serverPort.load(), why)) {
+			std::cerr << "ReportDetection refused: " << why << std::endl;
+			return PermissionDenied(why);
+		}
+
+		std::string outcome = RespondToDetection(*request, *serviceContext->config);
+
+		// Not published to the detector: it already knows, and no rule matches on it
+		nlohmann::ordered_json event;
+		event["Event"] = "Detection";
+		event["Rule"] = request->rule();
+		event["Description"] = request->description();
+		// The same words the rules and detection.log use: "medium", "kill"
+		event["Severity"] = EnumWord(DetectionSeverity_Name(request->severity()), "DETECTION_SEVERITY_");
+		event["Action"] = EnumWord(DetectionAction_Name(request->action()), "DETECTION_ACTION_");
+		event["PID"] = request->process_id();
+		// The detector takes the image from the event, which is empty for processes that started
+		// before the service; the service may still know it
+		std::string image = request->image_path();
+		if (image.empty()) {
+			FILETIME matched;
+			matched.dwLowDateTime = (DWORD)(request->timestamp() & 0xFFFFFFFF);
+			matched.dwHighDateTime = (DWORD)((UINT64)request->timestamp() >> 32);
+			image = ResolveProcessImage(request->process_id(), request->timestamp() != 0 ? matched : CurrentFileTime());
+		}
+		event["Image"] = image;
+		// UTC in the format of every other line, so the log sorts and replays consistently
+		event["Time"] = FormatSystemTime(CurrentFileTime());
+		event["Response"] = outcome;
+		event["EventSequences"] = std::vector<uint64_t>(request->event_sequences().begin(), request->event_sequences().end());
+		WriteToLogFile(event.dump() + "\n");
+
+		std::string displayMessage = request->rule() + " (PID " + std::to_string(request->process_id()) + (image.empty() ? "" : ", " + GetBaseName(image)) + "): " + outcome;
+		TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
+
+		response->set_ack_type(AckType::SUCCESS);
+		response->set_message(outcome);
+		return ::grpc::Status::OK;
+	}
 };
 
 // The running server, so StopServiceServer can shut it down from another thread.
@@ -338,6 +440,10 @@ static bool g_serverStopping = false;
 
 VOID StopServiceServer()
 {
+	// Event streams only end when the detector disconnects, so they are ended first; otherwise
+	// each would hold up shutdown until the grace period runs out
+	StopDetectorStreams();
+
 	std::lock_guard<std::mutex> lock(g_serverLock);
 	g_serverStopping = true;
 	if (g_server != nullptr) {
@@ -365,6 +471,7 @@ void RunServiceServer(LPVOID lpParam)
 		return;
 	}
 
+	g_serverPort = selected_port;
 	bool updatedReg = CreateRegistryEntryWithPort(selected_port);
 	if (!updatedReg) {
 		auto threadError = &serviceContext->threadError;

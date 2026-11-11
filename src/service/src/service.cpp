@@ -170,6 +170,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 #pragma endregion
 
+#pragma region Detector
+	// Started in every build: it dials back to the server (retrying until the port is
+	// published) and receives events once the driver and hook events below start
+	errCode = StartDetector();
+	if (errCode != PANO_SUCCESS) {
+		return CleanupWithError(errCode);
+	}
+#pragma endregion
+
 #pragma region Driver
 	// The driver is required and must already be running. Debug builds skip it unless
 	// --driver is passed, so the service can be debugged unelevated without the driver

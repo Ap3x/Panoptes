@@ -7,7 +7,8 @@ std::vector<std::string> AcceptableConfigParams = {
 	"QuarantineMaliciousFiles",
 	"LogExclusions",
 	"DontInject",
-	"FileEvents"
+	"FileEvents",
+	"EnforceDetectionActions"
 };
 
 /// @brief The required configuration parameters

@@ -24,6 +24,9 @@ protected:
 	/// @brief Get the optional FileEvents list from the configuration file
 	void GetFileEvents();
 
+	/// @brief Get the optional EnforceDetectionActions setting from the configuration file
+	void GetEnforceDetectionActions();
+
 public:
 	/// @brief The names FileEvents accepts, one per group of file system events the driver can
 	/// report. When FileEvents is not set, all of them are reported
@@ -55,6 +58,10 @@ public:
 	/// group if FileEvents is not set. Sent to the driver with IOCTL_PANOPTES_SET_FILE_EVENTS
 	/// when the service starts
 	std::vector<std::string> m_fileEvents = FileEventNames();
+
+	/// @brief Whether the service carries out the kill and quarantine actions of detector rules.
+	/// When false (the default) those detections are logged and notified only
+	bool m_enforceDetectionActions = false;
 
 	/// @brief Check whether a path matches any pattern in an exclusion list. A pattern with no
 	/// wildcard matches every path that starts with it. A pattern containing * (any run of

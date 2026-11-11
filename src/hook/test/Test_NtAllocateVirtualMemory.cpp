@@ -21,7 +21,77 @@ static PVOID AllocEx(HANDLE process, SIZE_T size, ULONG allocationType, ULONG pr
 	return base;
 }
 
+/// @brief Copies the hook DLL this test loaded into a folder under %TEMP% and loads the copy, as
+/// happens when the hook tests run on a machine where the driver already injected the installed
+/// DLL. Returns NULL on failure.
+static HMODULE LoadCopy(const char* folderName) {
+	char source[MAX_PATH];
+	char folder[MAX_PATH];
+	char destination[MAX_PATH];
+	HMODULE first = GetModuleHandleA(HOOK_DLL_NAME);
+	if (first == NULL || GetModuleFileNameA(first, source, MAX_PATH) == 0 || GetTempPathA(MAX_PATH, folder) == 0) {
+		fprintf(stderr, "    cannot locate %s\n", HOOK_DLL_NAME);
+		return NULL;
+	}
+	strcat_s(folder, folderName);
+	CreateDirectoryA(folder, NULL);
+	sprintf_s(destination, "%s\\%s", folder, HOOK_DLL_NAME);
+	HMODULE second = CopyFileA(source, destination, FALSE) ? LoadLibraryA(destination) : NULL;
+	if (second == NULL || second == first) {
+		fprintf(stderr, "    failed to load a second copy from %s (error %lu)\n", destination, GetLastError());
+		return NULL;
+	}
+	return second;
+}
+
 static const std::vector<HookTestCase> g_Cases = {
+	// A second copy of the DLL wraps the first copy's hooks; it silences the first copy so each
+	// call is reported once, and the first copy reports again once the second unloads. Unloading
+	// the copy unmaps an executable image, which the first copy reports.
+	{
+		"Second copy of the DLL reports each call once",
+		[](HookTestContext&) {
+			HMODULE second = LoadCopy("PanoptesSecondCopy");
+			VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+			if (second != NULL) {
+				FreeLibrary(second);
+			}
+			VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		},
+		{
+			"NtAllocateVirtualMemory: 4096 executable bytes allocated at * in the current process (protection 0x40)",
+			"NtUnmapViewOfSection: executable image at * unmapped from the current process",
+			"NtAllocateVirtualMemory: 4096 executable bytes allocated at * in the current process (protection 0x40)",
+		},
+	},
+	{
+		// Three copies, as on a machine where the driver injected the installed DLL and this test
+		// loaded its own build: only the newest reports, and each unload hands reporting to the
+		// next newest. Copies are unloaded newest first, because Detours hooks have to be removed
+		// in the reverse of the order they were placed
+		"Three copies of the DLL report each call once",
+		[](HookTestContext&) {
+			HMODULE second = LoadCopy("PanoptesSecondCopy");
+			HMODULE third = LoadCopy("PanoptesThirdCopy");
+			VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+			if (third != NULL) {
+				FreeLibrary(third);
+			}
+			VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+			if (second != NULL) {
+				FreeLibrary(second);
+			}
+			VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		},
+		{
+			"NtAllocateVirtualMemory: 4096 executable bytes allocated at * in the current process (protection 0x40)",
+			"NtUnmapViewOfSection: executable image at * unmapped from the current process",
+			"NtAllocateVirtualMemory: 4096 executable bytes allocated at * in the current process (protection 0x40)",
+			"NtUnmapViewOfSection: executable image at * unmapped from the current process",
+			"NtAllocateVirtualMemory: 4096 executable bytes allocated at * in the current process (protection 0x40)",
+		},
+	},
+
 	// NtAllocateVirtualMemory
 
 	{

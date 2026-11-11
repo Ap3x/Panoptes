@@ -15,11 +15,14 @@ set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/src/panoptes.proto")
 set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/containers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/database.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/detector.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/detector_stream.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/driver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/driver_events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/grpc.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hook_events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pano_log.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/process_images.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/error_message.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hash.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/mutex.cpp
@@ -35,11 +38,14 @@ set(SOURCES
 set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/containers.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/database.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/detector.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/detector_stream.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/driver.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/driver_events.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/grpc.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/icon_resource.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pano_log.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/process_images.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/mutex.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/service_constants.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/error_message.h
@@ -127,6 +133,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Configuration
     Crypt32
+    Iphlpapi
     Shlwapi
     Rpcrt4
 )
@@ -171,3 +178,7 @@ if(MSVC)
 endif()
 
 
+
+if(BUILD_TESTS)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test)
+endif()

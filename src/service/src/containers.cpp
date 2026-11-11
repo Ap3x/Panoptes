@@ -2,6 +2,7 @@
 #include "error_message.h"
 #include "utils.h"
 #include "Configuration.hpp"
+#include <iostream>
 
 std::string BuildContainerCommandLine(Configuration::ContainerType ext)
 {
@@ -26,6 +27,9 @@ std::string BuildContainerCommandLine(Configuration::ContainerType ext)
 static HANDLE g_ContainerJob = NULL;
 
 static bool CreateContainerJob() {
+	if (g_ContainerJob != NULL) {
+		return true; // StartContainers and StartDetector share it
+	}
 	g_ContainerJob = CreateJobObjectW(NULL, NULL);
 	if (g_ContainerJob == NULL) {
 		return false;
@@ -101,6 +105,66 @@ ERRORCODE StartContainers() {
 	}
 
 	return PANO_SUCCESS;
+}
+
+std::wstring DetectorExecutablePath() {
+	WCHAR path[MAX_PATH];
+	DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
+	if (length == 0 || length == MAX_PATH) {
+		return L"";
+	}
+	std::wstring directory(path, length);
+	directory.resize(directory.find_last_of(L'\\') + 1);
+	return directory + L"PanoptesDetector.exe";
+}
+
+ERRORCODE StartDetector() {
+	std::wstring exe = DetectorExecutablePath();
+	if (exe.empty() || GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+		// The detector is optional: without it, the service still logs and scans
+		std::cerr << "PanoptesDetector.exe is not next to the service; behavioral rules are off" << std::endl;
+		return PANO_SUCCESS;
+	}
+	if (!CreateContainerJob()) {
+		return CONTAINER_START;
+	}
+
+	std::wstring folder = exe.substr(0, exe.find_last_of(L'\\'));
+	std::wstring commandLine = L"\"" + exe + L"\" -rules \"" + folder + L"\\rules\"";
+#ifdef _DEBUG
+	// Debug builds of the service publish their port under HKCU, and the detector's output
+	// shares the service's console
+	commandLine += L" -debug-service";
+	DWORD creationFlags = CREATE_SUSPENDED;
+#else
+	DWORD creationFlags = CREATE_SUSPENDED | CREATE_NO_WINDOW;
+#endif
+
+	STARTUPINFOW startupInfo{};
+	startupInfo.cb = sizeof(startupInfo);
+	PROCESS_INFORMATION processInformation{};
+	if (!CreateProcessW(exe.c_str(), commandLine.data(), NULL, NULL, FALSE, creationFlags, NULL,
+		folder.c_str(), &startupInfo, &processInformation)) {
+		std::cerr << "Failed to start PanoptesDetector.exe (error " << GetLastError() << ")" << std::endl;
+		return CONTAINER_START;
+	}
+
+	// In the job before it runs, so it ends with the service like the containers do
+	BOOL assigned = AssignProcessToJobObject(g_ContainerJob, processInformation.hProcess);
+	if (assigned) {
+		ResumeThread(processInformation.hThread);
+	}
+	else {
+		TerminateProcess(processInformation.hProcess, 1);
+	}
+	CloseHandle(processInformation.hThread);
+	CloseHandle(processInformation.hProcess);
+	return assigned ? PANO_SUCCESS : CONTAINER_START;
+}
+
+bool IsServiceChildProcess(HANDLE process) {
+	BOOL inJob = FALSE;
+	return g_ContainerJob != NULL && IsProcessInJob(process, g_ContainerJob, &inJob) && inJob;
 }
 
 void StopContainers() {

@@ -3,6 +3,8 @@
 #include "error_message.h"
 #include "grpc.hpp"
 #include "pano_log.h"
+#include "detector_stream.h"
+#include "process_images.h"
 #include "utils.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -201,10 +203,12 @@ static FILETIME ToFileTime(INT64 timestamp)
 }
 
 // Events are ordered_json so keys are written in insertion order; every event sets "Event"
-// first so each log line starts with its type
-static void LogEvent(const nlohmann::ordered_json &event)
+// first so each log line starts with its type. time is when the event happened; the detector
+// gets it at full resolution, since the log's Time field only has whole seconds
+static void LogEvent(const nlohmann::ordered_json &event, const FILETIME &time)
 {
 	std::string line = event.dump();
+	PublishDetectorEvent(event.value("Event", ""), line, time);
 	line += '\n';
 	WriteToLogFile(line);
 #ifdef _DEBUG
@@ -392,7 +396,7 @@ static void HandleFileModifiedEvent(const PANO_EVENT_HEADER *header, const PANO_
 	}
 	if (!IsLogExcluded(path))
 	{
-		LogEvent(event);
+		LogEvent(event, ToFileTime(data->FirstWriteTime));
 	}
 
 	// A file still being written is not complete yet; it is scanned when its handle closes
@@ -478,7 +482,7 @@ static void HandleFileEvent(const PANO_EVENT_HEADER *header, const PANO_FILE_EVE
 	}
 	if (!IsLogExcluded(path))
 	{
-		LogEvent(event);
+		LogEvent(event, timestamp);
 	}
 
 	// Deleted files need no handling: pending writes to them are still logged, and the scan
@@ -530,7 +534,7 @@ static void HandleRenameEvent(const PANO_EVENT_HEADER *header, const PANO_RENAME
 	// only hidden when both names are excluded
 	if (!(IsLogExcluded(source) && IsLogExcluded(destination)))
 	{
-		LogEvent(event);
+		LogEvent(event, ToFileTime(header->Timestamp));
 	}
 
 	if (dosDestination.empty())
@@ -600,9 +604,17 @@ static void HandleProcessEvent(const PANO_EVENT_HEADER *header, const PANO_PROCE
 		{
 			event["CommandLineTruncated"] = true;
 		}
+
+		// Before logging, so the image is known before any hook event from this process
+		// can arrive (a truncated name is still the best path available)
+		RecordProcessStart(data->ProcessId, event["Image"].get<std::string>(), ToFileTime(header->Timestamp));
+	}
+	else if (header->Type == PANO_EVENT_PROCESS_TERMINATED)
+	{
+		RecordProcessExit(data->ProcessId);
 	}
 
-	LogEvent(event);
+	LogEvent(event, ToFileTime(header->Timestamp));
 }
 
 static void HandleEvent(const BYTE *buffer, DWORD bytes)
@@ -628,7 +640,7 @@ static void HandleEvent(const BYTE *buffer, DWORD bytes)
 		event["Event"] = "EventsDropped";
 		event["Reason"] = "NoService";
 		event["Count"] = header->DroppedNoConsumer;
-		LogEvent(event);
+		LogEvent(event, CurrentFileTime());
 	}
 	if (header->Dropped > 0)
 	{
@@ -636,7 +648,7 @@ static void HandleEvent(const BYTE *buffer, DWORD bytes)
 		event["Event"] = "EventsDropped";
 		event["Reason"] = "QueueFull";
 		event["Count"] = header->Dropped;
-		LogEvent(event);
+		LogEvent(event, CurrentFileTime());
 	}
 
 	if (EventTypeName(header->Type) == nullptr)
@@ -835,7 +847,7 @@ static void WrittenFileScanThread()
 			event["Time"] = FormatSystemTime(file.FirstWriteTime);
 			if (!IsLogExcluded(path))
 			{
-				LogEvent(event);
+				LogEvent(event, file.FirstWriteTime);
 			}
 
 			// A file still being written is not complete yet; it is scanned once it settles

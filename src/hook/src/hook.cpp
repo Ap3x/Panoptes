@@ -99,9 +99,28 @@ static BOOL ViewContainsExecutable(HANDLE ProcessHandle, PVOID Address, BOOL *Is
 	return FALSE;
 }
 
+#pragma region Handle identity
+
+/// NtCompareObjects (Windows 10 1607+) tells whether two handles refer to the same kernel object.
+/// It needs no access rights on either handle, so it identifies handles that cannot be queried.
+typedef NTSTATUS(NTAPI *pNtCompareObjects)(HANDLE FirstObjectHandle, HANDLE SecondObjectHandle);
+
+/// NtGetNextThread enumerates the threads of a process, opening a handle to each.
+typedef NTSTATUS(NTAPI *pNtGetNextThread)(HANDLE ProcessHandle, HANDLE ThreadHandle, ACCESS_MASK DesiredAccess,
+										  ULONG HandleAttributes, ULONG Flags, PHANDLE NewThreadHandle);
+
+/// Resolved in PlaceHooks; NULL on Windows versions without them, which falls back to treating an
+/// unqueryable handle as remote. Neither is hooked, so calling them from a hook cannot recurse.
+static pNtCompareObjects g_NtCompareObjects = NULL;
+static pNtGetNextThread g_NtGetNextThread = NULL;
+
+/// A real handle to the current process, for NtCompareObjects (which does not accept the
+/// current-process pseudo-handle). Opened in PlaceHooks and closed in UnHook.
+static HANDLE g_SelfProcess = NULL;
+
 /// @brief Checks whether a process handle refers to the current process.
-/// @param ProcessHandle The process. Needs PROCESS_QUERY_LIMITED_INFORMATION unless it is the
-/// current-process pseudo-handle; if the query fails the process is treated as remote.
+/// @param ProcessHandle The process. Identified by ID when it has PROCESS_QUERY_LIMITED_INFORMATION,
+/// otherwise by comparing the object with the current process.
 /// @return TRUE if the handle is for the current process.
 static BOOL IsCurrentProcess(HANDLE ProcessHandle)
 {
@@ -110,13 +129,22 @@ static BOOL IsCurrentProcess(HANDLE ProcessHandle)
 		return TRUE;
 	}
 
-	// GetProcessId returns 0 on failure, which never matches a real process ID
-	return GetProcessId(ProcessHandle) == GetCurrentProcessId();
+	// GetProcessId returns 0 when the handle lacks query access
+	const DWORD processId = GetProcessId(ProcessHandle);
+	if (processId != 0)
+	{
+		return processId == GetCurrentProcessId();
+	}
+
+	return g_NtCompareObjects != NULL && g_SelfProcess != NULL &&
+		   NT_SUCCESS(g_NtCompareObjects(ProcessHandle, g_SelfProcess));
 }
 
 /// @brief Checks whether a thread belongs to the current process.
-/// @param ThreadHandle The thread. Needs THREAD_QUERY_LIMITED_INFORMATION unless it is the
-/// current-thread pseudo-handle; if the query fails the thread is treated as remote.
+/// @param ThreadHandle The thread. Identified by its process ID when it has
+/// THREAD_QUERY_LIMITED_INFORMATION. Without it (QueueUserAPC only needs THREAD_SET_CONTEXT) the
+/// handle is compared with each thread of the current process; if no thread matches, or the
+/// comparison is unavailable, the thread is treated as remote.
 /// @return TRUE if the thread is in the current process.
 static BOOL IsThreadInCurrentProcess(HANDLE ThreadHandle)
 {
@@ -125,9 +153,38 @@ static BOOL IsThreadInCurrentProcess(HANDLE ThreadHandle)
 		return TRUE;
 	}
 
-	// GetProcessIdOfThread returns 0 on failure, which never matches a real process ID
-	return GetProcessIdOfThread(ThreadHandle) == GetCurrentProcessId();
+	// GetProcessIdOfThread returns 0 when the handle lacks query access
+	const DWORD processId = GetProcessIdOfThread(ThreadHandle);
+	if (processId != 0)
+	{
+		return processId == GetCurrentProcessId();
+	}
+
+	if (g_NtCompareObjects == NULL || g_NtGetNextThread == NULL)
+	{
+		return FALSE;
+	}
+
+	BOOL found = FALSE;
+	HANDLE thread = NULL;
+	HANDLE next = NULL;
+	while (!found && NT_SUCCESS(g_NtGetNextThread(GetCurrentProcess(), thread, SYNCHRONIZE, 0, 0, &next)))
+	{
+		if (thread != NULL)
+		{
+			CloseHandle(thread);
+		}
+		thread = next;
+		found = NT_SUCCESS(g_NtCompareObjects(ThreadHandle, thread)); // STATUS_NOT_SAME_OBJECT otherwise
+	}
+	if (thread != NULL)
+	{
+		CloseHandle(thread);
+	}
+	return found;
 }
+
+#pragma endregion
 
 /// The kernel gives each PEB its own page-aligned page, and the PEB is smaller than a page
 /// on every supported Windows version, so a write into that page is a write into the PEB.
@@ -682,13 +739,206 @@ static HOOK_ENTRY g_Hooks[] = {
 	{"NtSetInformationProcess", (PVOID *)&pOriginal_NtSetInformationProcess, (PVOID)Hooked_NtSetInformationProcess},
 };
 
+#pragma region Logging control
+
+extern "C" IMAGE_DOS_HEADER __ImageBase;
+
+/// The thread running PlaceHooks or UnHook. Once the first hook of a Detours transaction is live,
+/// Detours' own VirtualProtect calls on ntdll go through the NtProtectVirtualMemory hook; events
+/// from that thread are dropped so the DLL does not report itself.
+static volatile DWORD g_TransactionThreadId = 0;
+
+// More than one copy of this DLL can be loaded into a process when it is loaded from different
+// folders: the driver injects the installed copy, and the hook tests load their own build (and
+// one test case loads a third). Each copy places its own hooks and the hooks chain, so every call
+// would be reported once per copy. Only the newest copy, whose hooks are the outermost, reports;
+// the others are silenced. Copies are ordered by a generation number rather than by the module
+// list, and the list is walked afresh on every load and unload, so no copy keeps a pointer into
+// another that may since have unloaded. The exports are __cdecl so the x86 names are undecorated.
+
+/// Set while a newer copy of this DLL is loaded into the process.
+static volatile LONG g_Silenced = 0;
+
+/// This copy's place in load order: one more than the newest copy already loaded.
+static LONG g_Generation = 0;
+
+typedef VOID(__cdecl *pPanoptesSetSilenced)(BOOL Silenced);
+typedef LONG(__cdecl *pPanoptesGeneration)();
+typedef VOID(__cdecl *pPanoptesSetTransactionThread)(DWORD ThreadId);
+
+BOOL HookLoggingEnabled()
+{
+	return g_Silenced == 0 && GetCurrentThreadId() != g_TransactionThreadId;
+}
+
+/// @brief Called by another copy of this DLL to stop (TRUE) or resume (FALSE) this copy's logging.
+extern "C" __declspec(dllexport) VOID __cdecl PanoptesSetSilenced(BOOL Silenced)
+{
+	InterlockedExchange(&g_Silenced, Silenced ? 1 : 0);
+}
+
+/// @brief Called by another copy around its Detours transactions: its patching goes through this
+/// copy's hooks too, and must not be reported by whichever copy is reporting. 0 clears it.
+extern "C" __declspec(dllexport) VOID __cdecl PanoptesSetTransactionThread(DWORD ThreadId)
+{
+	g_TransactionThreadId = ThreadId;
+}
+
+/// @brief This copy's load generation, for other copies deciding which of them reports.
+extern "C" __declspec(dllexport) LONG __cdecl PanoptesGeneration()
+{
+	return g_Generation;
+}
+
+/// @brief The file name part of a path, for comparing modules loaded from different folders.
+static const WCHAR *FileNamePart(const UNICODE_STRING &Path, USHORT *Length)
+{
+	USHORT start = Path.Length / sizeof(WCHAR);
+	while (start > 0 && Path.Buffer[start - 1] != L'\\' && Path.Buffer[start - 1] != L'/')
+	{
+		start--;
+	}
+	*Length = (USHORT)(Path.Length / sizeof(WCHAR) - start);
+	return Path.Buffer + start;
+}
+
+/// The most other copies tracked; more than a couple in one process is not expected.
+#define PANO_MAX_OTHER_COPIES 8
+
+struct OTHER_COPY
+{
+	pPanoptesSetSilenced SetSilenced;
+	pPanoptesGeneration Generation;
+	pPanoptesSetTransactionThread SetTransactionThread;
+};
+
+/// @brief Finds the other loaded copies of this DLL: modules with the same file name that export
+/// the copy-coordination functions. Walks the loader's module list directly, because the psapi
+/// functions read it through NtReadVirtualMemory, which the other copies have hooked. Runs from
+/// DllMain, under the loader lock, so the list cannot change during the walk.
+/// @param Copies Receives up to PANO_MAX_OTHER_COPIES copies.
+/// @return The number of copies found.
+static int FindOtherCopies(OTHER_COPY Copies[PANO_MAX_OTHER_COPIES])
+{
+	PPEB_LDR_DATA ldr = NtCurrentTeb()->ProcessEnvironmentBlock->Ldr;
+	const LIST_ENTRY *head = &ldr->InMemoryOrderModuleList;
+
+	// This copy's own file name
+	const WCHAR *selfName = NULL;
+	USHORT selfLength = 0;
+	for (const LIST_ENTRY *link = head->Flink; link != head; link = link->Flink)
+	{
+		const LDR_DATA_TABLE_ENTRY *entry = CONTAINING_RECORD(link, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+		if (entry->DllBase == &__ImageBase)
+		{
+			selfName = FileNamePart(entry->FullDllName, &selfLength);
+			break;
+		}
+	}
+	if (selfName == NULL)
+	{
+		return 0;
+	}
+
+	int count = 0;
+	for (const LIST_ENTRY *link = head->Flink; link != head && count < PANO_MAX_OTHER_COPIES; link = link->Flink)
+	{
+		const LDR_DATA_TABLE_ENTRY *entry = CONTAINING_RECORD(link, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+		if (entry->DllBase == &__ImageBase || entry->DllBase == NULL)
+		{
+			continue;
+		}
+
+		USHORT length = 0;
+		const WCHAR *name = FileNamePart(entry->FullDllName, &length);
+		if (length != selfLength || CompareStringOrdinal(name, length, selfName, selfLength, TRUE) != CSTR_EQUAL)
+		{
+			continue;
+		}
+
+		OTHER_COPY copy;
+		copy.SetSilenced = (pPanoptesSetSilenced)GetProcAddress((HMODULE)entry->DllBase, "PanoptesSetSilenced");
+		copy.Generation = (pPanoptesGeneration)GetProcAddress((HMODULE)entry->DllBase, "PanoptesGeneration");
+		copy.SetTransactionThread = (pPanoptesSetTransactionThread)GetProcAddress((HMODULE)entry->DllBase, "PanoptesSetTransactionThread");
+		if (copy.SetSilenced != NULL && copy.Generation != NULL && copy.SetTransactionThread != NULL)
+		{
+			Copies[count++] = copy;
+		}
+	}
+	return count;
+}
+
+/// @brief On load: silences every other copy and takes the next generation, so this copy reports.
+static VOID TakeOverReporting()
+{
+	OTHER_COPY copies[PANO_MAX_OTHER_COPIES];
+	const int count = FindOtherCopies(copies);
+
+	LONG newest = 0;
+	for (int i = 0; i < count; i++)
+	{
+		copies[i].SetSilenced(TRUE);
+		const LONG generation = copies[i].Generation();
+		if (generation > newest)
+		{
+			newest = generation;
+		}
+	}
+	g_Generation = newest + 1;
+}
+
+/// @brief On unload: hands reporting to the newest remaining copy, whose hooks are now the
+/// outermost. If a newer copy than this one is still loaded, that copy keeps reporting.
+static VOID HandOverReporting()
+{
+	OTHER_COPY copies[PANO_MAX_OTHER_COPIES];
+	const int count = FindOtherCopies(copies);
+
+	int newest = -1;
+	for (int i = 0; i < count; i++)
+	{
+		if (newest < 0 || copies[i].Generation() > copies[newest].Generation())
+		{
+			newest = i;
+		}
+	}
+	for (int i = 0; i < count; i++)
+	{
+		copies[i].SetSilenced(i != newest);
+	}
+}
+
+/// @brief Marks (or with 0, clears) the thread running this copy's Detours transaction in every
+/// other copy. The transaction's VirtualProtect calls pass through all copies' hooks, and the copy
+/// reporting may not be this one (when an older copy unloads while a newer one is loaded).
+static VOID SetTransactionThreadInOtherCopies(DWORD ThreadId)
+{
+	OTHER_COPY copies[PANO_MAX_OTHER_COPIES];
+	const int count = FindOtherCopies(copies);
+	for (int i = 0; i < count; i++)
+	{
+		copies[i].SetTransactionThread(ThreadId);
+	}
+}
+
+#pragma endregion
+
 /// @brief The PlaceHooks function places the trampoline hooks on several NTDLL functions.
 /// Exports missing from this version of ntdll (e.g. the Ex variants on older Windows) are skipped.
 VOID PlaceHooks()
 {
 	HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
 	g_NtQueryInformationProcess = (decltype(&NtQueryInformationProcess))GetProcAddress(ntdll, "NtQueryInformationProcess");
+	g_NtCompareObjects = (pNtCompareObjects)GetProcAddress(ntdll, "NtCompareObjects");
+	g_NtGetNextThread = (pNtGetNextThread)GetProcAddress(ntdll, "NtGetNextThread");
+	g_SelfProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, GetCurrentProcessId());
 
+	// This copy's hooks will wrap every other copy's, so this copy reports and the others go
+	// quiet. Done before the transaction, so the others do not report Detours' patching either
+	TakeOverReporting();
+
+	g_TransactionThreadId = GetCurrentThreadId();
+	SetTransactionThreadInOtherCopies(g_TransactionThreadId);
 	DetourTransactionBegin();
 	DetourUpdateThread(GetCurrentThread());
 
@@ -702,12 +952,16 @@ VOID PlaceHooks()
 	}
 
 	DetourTransactionCommit();
+	g_TransactionThreadId = 0;
+	SetTransactionThreadInOtherCopies(0);
 	return;
 }
 
 /// @brief The UnHook function removes the trampoline hooks from the NTDLL functions.
 VOID UnHook()
 {
+	g_TransactionThreadId = GetCurrentThreadId();
+	SetTransactionThreadInOtherCopies(g_TransactionThreadId);
 	DetourTransactionBegin();
 	DetourUpdateThread(GetCurrentThread());
 
@@ -720,5 +974,17 @@ VOID UnHook()
 	}
 
 	DetourTransactionCommit();
+
+	// After the transaction, so the next copy does not report Detours removing these hooks
+	SetTransactionThreadInOtherCopies(0);
+	HandOverReporting();
+
+	if (g_SelfProcess != NULL)
+	{
+		CloseHandle(g_SelfProcess);
+		g_SelfProcess = NULL;
+	}
+	// Left set: the process is exiting or the DLL is unloading, and nothing this thread does from
+	// here on should be reported by this copy
 	return;
 }

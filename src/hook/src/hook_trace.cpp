@@ -39,6 +39,11 @@ static VOID DebugMessage(const char* Format, ...)
 #pragma region Detections
 VOID Log_PEWritten(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress, BOOL Executable)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "PEWritten",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -54,6 +59,11 @@ VOID Log_PEWritten(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress,
 
 VOID Log_PEBWritten(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULONG_PTR PebOffset)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "PEBWritten",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -69,6 +79,11 @@ VOID Log_PEBWritten(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULON
 
 VOID Log_PEBRead(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULONG_PTR PebOffset)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	// Debuggers, Task Manager and Process Explorer read other processes' PEBs routinely, so this
 	// is informational rather than a warning
 	TraceLoggingWrite(g_hHookProvider, "PEBRead",
@@ -86,6 +101,11 @@ VOID Log_PEBRead(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULONG_P
 
 VOID Log_ProtectionSetAttempt(HANDLE ProcessHandle, BOOL CurrentProcess, NTSTATUS Status)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "ProtectionSetAttempt",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -100,6 +120,11 @@ VOID Log_ProtectionSetAttempt(HANDLE ProcessHandle, BOOL CurrentProcess, NTSTATU
 
 VOID Log_ApcQueued(HANDLE ThreadHandle, BOOL CurrentProcess, const char* Api, PVOID ApcRoutine, ULONG ApcFlags)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "ApcQueued",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -116,6 +141,11 @@ VOID Log_ApcQueued(HANDLE ThreadHandle, BOOL CurrentProcess, const char* Api, PV
 
 VOID Log_RemoteThreadCreated(HANDLE ProcessHandle, PVOID StartRoutine, ULONG CreateFlags)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "RemoteThreadCreated",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -132,6 +162,11 @@ VOID Log_RemoteThreadCreated(HANDLE ProcessHandle, PVOID StartRoutine, ULONG Cre
 VOID Log_ExecutableAllocated(HANDLE ProcessHandle, BOOL CurrentProcess, const char* Api,
 	PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protection)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "ExecutableAllocated",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -148,8 +183,13 @@ VOID Log_ExecutableAllocated(HANDLE ProcessHandle, BOOL CurrentProcess, const ch
 }
 
 VOID Log_ExecutableUnmapped(HANDLE ProcessHandle, BOOL CurrentProcess, const char* Api,
-	PVOID BaseAddress, BOOL Image)
+	PVOID BaseAddress, BOOL IsImage)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "ExecutableUnmapped",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -157,15 +197,20 @@ VOID Log_ExecutableUnmapped(HANDLE ProcessHandle, BOOL CurrentProcess, const cha
 		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingPointer(BaseAddress, "BaseAddress"),
-		TraceLoggingBool(Image, "Image"));
+		TraceLoggingBool(IsImage, "IsImage"));
 
 	DebugMessage("[Panoptes] %s: executable %s at %p unmapped from the %s process\n",
-		Api, Image ? "image" : "view", BaseAddress, CurrentProcess ? "current" : "remote");
+		Api, IsImage ? "image" : "view", BaseAddress, CurrentProcess ? "current" : "remote");
 }
 
 VOID Log_RemoteViewMapped(HANDLE ProcessHandle, const char* Api, PVOID BaseAddress, SIZE_T ViewSize,
-	ULONG Protection, BOOL Executable, BOOL Image)
+	ULONG Protection, BOOL Executable, BOOL IsImage)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "RemoteViewMapped",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
@@ -176,16 +221,21 @@ VOID Log_RemoteViewMapped(HANDLE ProcessHandle, const char* Api, PVOID BaseAddre
 		TraceLoggingUInt64((UINT64)ViewSize, "ViewSize"),
 		TraceLoggingHexUInt32(Protection, "Protection"),
 		TraceLoggingBool(Executable, "Executable"),
-		TraceLoggingBool(Image, "Image"));
+		TraceLoggingBool(IsImage, "IsImage"));
 
 	DebugMessage("[Panoptes] %s: %Iu-byte %s mapped into a remote process at %p (protection 0x%lx, %s)\n",
-		Api, ViewSize, Image ? "image" : "view", BaseAddress, Protection,
+		Api, ViewSize, IsImage ? "image" : "view", BaseAddress, Protection,
 		Executable ? "executable" : "not executable");
 }
 
 VOID Log_PEMadeExecutable(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress,
 	ULONG OldProtection, ULONG NewProtection)
 {
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
 	TraceLoggingWrite(g_hHookProvider, "PEMadeExecutable",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),

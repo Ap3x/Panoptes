@@ -1,0 +1,52 @@
+# Single-event rules on process command lines (ProcessCreated, from the driver). Image is the
+# NT path ("\??\C:\Windows\System32\cmd.exe"), so match it with endsWith. See injection.yaml for
+# the rule syntax.
+#
+# These alert rather than kill: the processes are short-lived, so by the time the service acts
+# the command has usually finished.
+
+# Ransomware removes Volume Shadow Copies so files cannot be restored
+- name: shadow_copy_deletion
+  description: Volume Shadow Copies are being deleted
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "ProcessCreated" && (
+        (lower(CommandLine) contains "vssadmin" && lower(CommandLine) contains "delete" && lower(CommandLine) contains "shadows") ||
+        (lower(CommandLine) contains "shadowcopy" && lower(CommandLine) contains "delete") ||
+        (lower(CommandLine) contains "win32_shadowcopy" && lower(CommandLine) contains "remove-") ||
+        (lower(CommandLine) contains "wbadmin" && lower(CommandLine) contains "delete catalog"))
+
+# -EncodedCommand (any prefix PowerShell accepts: -e, -ec, -enc, ...) followed by a base64 blob
+- name: encoded_powershell
+  description: PowerShell was started with a base64-encoded command
+  severity: medium
+  action: alert
+  sequence:
+    - >-
+      Event == "ProcessCreated" &&
+      (lower(Image) endsWith "\\powershell.exe" || lower(Image) endsWith "\\pwsh.exe") &&
+      lower(CommandLine) matches "\\s[-/]e(c|n[a-z]*)?\\s+[a-z0-9+/=]{20,}"
+
+# Turning off Microsoft Defender protections from the command line
+- name: defender_disabled
+  description: Microsoft Defender real-time protection or scanning is being turned off
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "ProcessCreated" &&
+      lower(CommandLine) contains "set-mppreference" &&
+      lower(CommandLine) matches "-disable(realtimemonitoring|behaviormonitoring|ioavprotection|scriptscanning|intrusionpreventionsystem)\\s+(\\$true|1)"
+
+# Clearing event logs to hide activity
+- name: event_log_cleared
+  description: Windows event logs are being cleared
+  severity: medium
+  action: alert
+  sequence:
+    - >-
+      Event == "ProcessCreated" && (
+        (lower(Image) endsWith "\\wevtutil.exe" && lower(CommandLine) matches "\\s(cl|clear-log)\\s") ||
+        lower(CommandLine) contains "clear-eventlog")

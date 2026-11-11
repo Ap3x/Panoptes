@@ -8,6 +8,7 @@ option(BUILD_YARA "Build the PanoptesYara extension (gRPC)" ON)
 option(BUILD_SCANNER "Build PanoptesScan and PanoptesScanCLI (gRPC, nlohmann-json)" ON)
 option(BUILD_LINTER "Build PanoptesLinter (nlohmann-json)" ON)
 option(BUILD_HOOK "Build the x64 and x86 hook DLLs (Detours)" ON)
+option(BUILD_DETECTOR "Build PanoptesDetector, the behavioral rule engine (needs Go)" ON)
 
 option(BUILD_DOC "Build documentation" OFF)
 option(BUILD_WIX_INSTALLER "Build Wix installer package" OFF)
@@ -90,6 +91,9 @@ endif()
 if(BUILD_LINTER)
     add_subdirectory(src/linter)
 endif()
+if(BUILD_DETECTOR)
+    add_subdirectory(src/detector)
+endif()
 if(BUILD_SCANNER)
     add_subdirectory(src/scanner)
 endif()
@@ -119,6 +123,10 @@ if(BUILD_DRIVER AND BUILD_SERVICE AND BUILD_CONTAINER AND BUILD_YARA AND BUILD_S
         PanoptesDLLx86
         PanoptesDriver
     )
+    # The service starts the detector when it is next to it; packages without it still run
+    if(BUILD_DETECTOR)
+        add_dependencies(TargetPackage PanoptesDetector)
+    endif()
 
     # With BUILD_TESTS, the package also carries the hook tests. The x64 ones are targets here;
     # the x86 ones are built by the PanoptesDLLx86 sub-build above

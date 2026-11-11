@@ -23,16 +23,20 @@ Exports missing from a process's ntdll (e.g. the `Ex` variants on older Windows)
 
 ## Events
 
-The hooks report through an ETW TraceLogging provider, `Panoptes.Hook` (`{D9AA2FDD-2853-4A97-A42F-E77E42921704}`), at warning level (`PEBRead` is informational) with the detection keyword `0x1`. Every event carries the API, `TargetProcessId` and `Remote`; the process the hook ran in is the process ID in the event header, which the writer cannot change. The service consumes the provider through a real-time ETW session (`Panoptes Hook Trace`) and writes the events to the same log as the driver's events.
+The hooks report through an ETW TraceLogging provider, `Panoptes.Hook` (`{D9AA2FDD-2853-4A97-A42F-E77E42921704}`), at warning level (`PEBRead` is informational) with the detection keyword `0x1`. Every event carries the API, `TargetProcessId` and `Remote`; the process the hook ran in is the process ID in the event header, which the writer cannot change. `RemoteViewMapped` and `ExecutableUnmapped` also carry `IsImage` (a `MEM_IMAGE` view); it is not called `Image` because the service fills that in with the process's image path. The service consumes the provider through a real-time ETW session (`Panoptes Hook Trace`) and writes the events to the same log as the driver's events.
 
 Writing an event is a single `NtTraceEvent` syscall, which is not hooked, so logging from inside a hook cannot recurse. Debug builds also send each event to `OutputDebugString` as a `[Panoptes]` message, which the tests check.
+
+Nothing is reported from the thread placing or removing the hooks, since Detours' own protection changes to ntdll would otherwise show up as `PEMadeExecutable`.
+
+If a process loads more than one copy of the DLL from different folders (the hook tests load their own build while the driver has already injected the installed one, and one test case loads a third), every copy places hooks and the hooks chain. Each copy takes a load generation, and only the newest, whose hooks are the outermost, reports: on load a copy silences the others through their `PanoptesSetSilenced` export, and on unload it hands reporting to the newest remaining copy. Copies also mark each other's Detours transactions (`PanoptesSetTransactionThread`), so no copy reports another's patching. Copies must unload newest first, as Detours requires; process exit does that.
 
 ## Known gaps and noise
 
 - `NtQueueApcThreadEx` is not hooked, so APCs queued through it directly are missed.
 - Executable allocations and protection changes in a process's own memory are common (JIT compilers in .NET and browsers), and `FreeLibrary` unmaps executable images, so local events are noisy. Remote events are the stronger signal.
 - `CreateProcess` writes to the new child's PEB, so every process launch produces a remote `PEBWritten`.
-- Detours' own protection changes when placing and removing the hooks are reported by the `NtProtectVirtualMemory` hook.
+- An APC queued through a remote thread handle without `THREAD_QUERY_LIMITED_INFORMATION` (all `QueueUserAPC` needs is `THREAD_SET_CONTEXT`) is reported with `TargetProcessId` 0, since the thread cannot be queried. Local handles like that are recognised by comparing the handle with each of the process's threads (`NtCompareObjects`, Windows 10 1607+) and are not reported.
 
 ## Building
 

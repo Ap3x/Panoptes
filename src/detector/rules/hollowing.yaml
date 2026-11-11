@@ -1,0 +1,51 @@
+# Process hollowing and early-bird variants: code placed in a process before (or instead of)
+# its own image running. See injection.yaml for the rule syntax.
+#
+# PEB offsets: ImageBaseAddress is at 0x10 in a 64-bit PEB and 0x8 in a 32-bit PEB. Writes at
+# 0x2d8 (x64) and 0x1e8 (x86) are made by CreateProcess itself for every child process and are
+# not suspicious.
+
+# The loader reads ImageBaseAddress to find the image; hollowing points it at the injected PE
+- name: peb_image_base_overwrite
+  description: Another process overwrote this process's PEB ImageBaseAddress
+  severity: critical
+  action: kill
+  target: PID            # the writer
+  sequence:
+    - 'Event == "PEBWritten" && Remote == true && ((PebOffset == "0x10" && Size == 8) || (PebOffset == "0x8" && Size == 4))'
+
+# Classic hollowing: unmap the victim's main image, then write a PE in its place
+- name: unmap_then_write_hollowing
+  description: A process unmapped an image from another process, then wrote a PE into it
+  severity: critical
+  action: kill
+  target: PID
+  by: TargetProcessId
+  maxspan: 10s
+  sequence:
+    - Event == "ExecutableUnmapped" && Remote == true && IsImage == true
+    - Event == "PEWritten" && Remote == true
+  until:
+    where: Event == "ProcessTerminated"
+    by: PID
+
+# The unmap alone: legitimate software almost never unmaps another process's image
+- name: remote_image_unmapped
+  description: A process unmapped an executable image from another process
+  severity: high
+  action: alert
+  sequence:
+    - Event == "ExecutableUnmapped" && Remote == true && IsImage == true
+
+# Early bird: create a (suspended) child and queue an APC to it before its main thread runs
+- name: early_bird_apc
+  description: An APC was queued into a process within seconds of its creation
+  severity: high
+  action: kill
+  target: PID
+  maxspan: 5s
+  sequence:
+    - where: Event == "ProcessCreated"
+      by: PID
+    - where: Event == "ApcQueued" && Remote == true
+      by: TargetProcessId

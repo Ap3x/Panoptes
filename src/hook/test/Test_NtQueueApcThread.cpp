@@ -1,8 +1,9 @@
 // Tests the Hooked_NtQueueApcThread and Hooked_NtQueueApcThreadEx2 post-call check: an APC
 // successfully queued to a thread in another process is reported with the API, the APC routine
-// and the QUEUE_USER_APC_FLAGS_*. The thread's process is found with GetProcessIdOfThread, so a
-// handle without THREAD_QUERY_LIMITED_INFORMATION is treated as remote. APCs queued to threads
-// of the current process are not reported.
+// and the QUEUE_USER_APC_FLAGS_*. The thread's process is found with GetProcessIdOfThread; a
+// handle without THREAD_QUERY_LIMITED_INFORMATION is instead compared with each thread of the
+// current process (NtCompareObjects), so it is only reported when the thread really is remote,
+// with TargetProcessId 0. APCs queued to threads of the current process are not reported.
 //
 // KernelBase's QueueUserAPC and QueueUserAPC2 call NtQueueApcThreadEx2, passing ntdll's APC
 // dispatcher as the routine, so the routine reported for them is the dispatcher rather than the
@@ -68,14 +69,23 @@ static const std::vector<HookTestCase> g_Cases = {
 		{},
 	},
 	{
-		// Without query access the thread's process cannot be found, so it is reported as remote
-		// rather than missed
-		"APC queued through a local thread handle without query access is reported as remote",
+		// Without query access the thread's process cannot be queried, but the handle still
+		// matches one of this process's threads
+		"APC queued through a local thread handle without query access is not reported",
 		[](HookTestContext&) {
 			HANDLE thread = OpenThread(THREAD_SET_CONTEXT, FALSE, GetCurrentThreadId());
 			QueueNt(thread);
 			CloseHandle(thread);
 			DrainApcs();
+		},
+		{},
+	},
+	{
+		"APC queued through a remote thread handle without query access is reported",
+		[](HookTestContext& context) {
+			HANDLE thread = OpenThread(THREAD_SET_CONTEXT, FALSE, GetThreadId(context.RemoteThread()));
+			QueueNt(thread);
+			CloseHandle(thread);
 		},
 		{ "NtQueueApcThread: APC queued to a thread in the remote process, routine *, flags 0x0" },
 	},

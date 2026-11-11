@@ -1,5 +1,8 @@
 syntax = "proto3";
 
+// Ignored by the C++ generator; tells protoc-gen-go where the Go detector's generated code lives
+option go_package = "github.com/Ap3x/Panoptes/detector/src/pb;pb";
+
 enum ContainerType {
   CONTAINER_TYPE_NONE = 0;
   CONTAINER_TYPE_YARA = 30;
@@ -54,6 +57,52 @@ message HealthCheckResponse {
 	bool pong = 1;
 }
 
+// ---- Behavioral detector (src/detector) ----
+
+message DetectorHello {
+	string version = 1;
+	// Event names the detector's rules reference (e.g. "RemoteThreadCreated"), so the
+	// service can skip streaming events no rule could match. Empty means send everything.
+	repeated string event_names = 2;
+}
+
+// One event, as the service logs it
+message DetectorEvent {
+	// Increments by one per event the service sends; a gap means the stream dropped events
+	uint64 sequence = 1;
+	// FILETIME (100ns intervals since 1601-01-01 UTC). The log's "Time" field only has
+	// one-second resolution, which is too coarse for maxspan windows.
+	int64 timestamp = 2;
+	// The same JSON object written to pano.log, so rules use the log's field names and
+	// can be tested offline by replaying a log file
+	string json = 3;
+}
+
+enum DetectionSeverity {
+	DETECTION_SEVERITY_LOW = 0;
+	DETECTION_SEVERITY_MEDIUM = 1;
+	DETECTION_SEVERITY_HIGH = 2;
+	DETECTION_SEVERITY_CRITICAL = 3;
+}
+
+enum DetectionAction {
+	DETECTION_ACTION_ALERT = 0;      // log and notify only
+	DETECTION_ACTION_KILL = 1;       // terminate process_id (TerminateProcessByDriver)
+	DETECTION_ACTION_QUARANTINE = 2; // kill, then quarantine image_path
+}
+
+message Detection {
+	string rule = 1;
+	string description = 2;
+	DetectionSeverity severity = 3;
+	DetectionAction action = 4;
+	uint32 process_id = 5;           // process to act on
+	string image_path = 6;
+	repeated uint64 event_sequences = 7; // DetectorEvent.sequence of each event that matched
+	// FILETIME of the last matching event. process_id must have existed by then: the service
+	// refuses to act on a process created later, since its ID was reused after the match
+	int64 timestamp = 8;
+}
 
 service PanoptesService {
   rpc Hello(ContainerInfo) returns (AckMessage) {}
@@ -61,6 +110,9 @@ service PanoptesService {
   rpc QueuePeScan(PeScanInfo) returns (AckMessage) {}
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {}
 
+  // The detector dials in (like the containers do) and the service streams events to it
+  rpc SubscribeEvents(DetectorHello) returns (stream DetectorEvent) {}
+  rpc ReportDetection(Detection) returns (AckMessage) {}
 }
 
 service PanoptesExtensibility {

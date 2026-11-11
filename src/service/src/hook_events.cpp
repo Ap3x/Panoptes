@@ -1,6 +1,8 @@
 #include "hook_events.h"
 #include "error_message.h"
 #include "pano_log.h"
+#include "detector_stream.h"
+#include "process_images.h"
 #include "utils.h"
 #include <evntrace.h>
 #include <evntcons.h>
@@ -47,9 +49,12 @@ static bool g_LossStopping = false;
 static ULONG g_ReportedEventsLost = 0;
 static ULONG g_ReportedBuffersLost = 0;
 
-static void LogHookEvent(const nlohmann::ordered_json &event)
+// time is when the event happened; the detector gets it at full resolution, since the log's
+// Time field only has whole seconds
+static void LogHookEvent(const nlohmann::ordered_json &event, const FILETIME &time)
 {
 	std::string line = event.dump();
+	PublishDetectorEvent(event.value("Event", ""), line, time);
 	WriteToLogFile(line + "\n");
 #ifdef _DEBUG
 	std::cout << line << std::endl;
@@ -149,27 +154,6 @@ static nlohmann::ordered_json PropertyToJson(const EVENT_PROPERTY_INFO &property
 	}
 }
 
-// The full image path of a running process, or an empty string if it has exited or cannot be
-// opened
-static std::string ProcessImage(DWORD processId)
-{
-	HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
-	if (process == NULL)
-	{
-		return "";
-	}
-
-	wchar_t path[MAX_PATH * 2];
-	DWORD length = ARRAYSIZE(path);
-	std::string image;
-	if (QueryFullProcessImageNameW(process, 0, path, &length))
-	{
-		image = ToString(std::wstring(path, length));
-	}
-	CloseHandle(process);
-	return image;
-}
-
 static FILETIME ToFileTime(const LARGE_INTEGER &timestamp)
 {
 	FILETIME fileTime;
@@ -207,14 +191,15 @@ static void WINAPI OnHookEvent(PEVENT_RECORD record)
 		: "HookEvent";
 
 	DWORD processId = record->EventHeader.ProcessId;
+	FILETIME eventTime = ToFileTime(record->EventHeader.TimeStamp);
 
 	nlohmann::ordered_json event;
 	event["Event"] = eventName;
 	event["Source"] = "Hook";
 	event["PID"] = processId;
 	event["TID"] = record->EventHeader.ThreadId;
-	event["Image"] = ProcessImage(processId);
-	event["Time"] = FormatSystemTime(ToFileTime(record->EventHeader.TimeStamp));
+	event["Image"] = ResolveProcessImage(processId, eventTime);
+	event["Time"] = FormatSystemTime(eventTime);
 
 	for (ULONG i = 0; i < info->TopLevelPropertyCount; i++)
 	{
@@ -242,16 +227,24 @@ static void WINAPI OnHookEvent(PEVENT_RECORD record)
 			continue;
 		}
 
-		event[ToString(propertyName)] = PropertyToJson(property, data.data(), size);
+		// Event, Source, PID, TID, Image and Time come from the event header and the service. The
+		// payload is written by code in the hooked (untrusted) process, so a payload field with one
+		// of those names is kept under a "Payload" prefix instead of replacing it
+		std::string name = ToString(propertyName);
+		if (event.contains(name))
+		{
+			name = "Payload" + name;
+		}
+		event[name] = PropertyToJson(property, data.data(), size);
 	}
 
 	// Name the process acted on when it is not the one the hook ran in
 	if (event.value("Remote", false) && event.contains("TargetProcessId") && event["TargetProcessId"].is_number())
 	{
-		event["TargetImage"] = ProcessImage(event["TargetProcessId"].get<DWORD>());
+		event["TargetImage"] = ResolveProcessImage(event["TargetProcessId"].get<DWORD>(), eventTime);
 	}
 
-	LogHookEvent(event);
+	LogHookEvent(event, eventTime);
 }
 
 #pragma endregion
@@ -294,7 +287,7 @@ static void ReportLoss(const EVENT_TRACE_PROPERTIES &properties)
 		event["Source"] = "Hook";
 		event["Reason"] = "QueueFull";
 		event["Count"] = properties.EventsLost - g_ReportedEventsLost;
-		LogHookEvent(event);
+		LogHookEvent(event, CurrentFileTime());
 		g_ReportedEventsLost = properties.EventsLost;
 	}
 	if (properties.RealTimeBuffersLost > g_ReportedBuffersLost)
@@ -304,7 +297,7 @@ static void ReportLoss(const EVENT_TRACE_PROPERTIES &properties)
 		event["Source"] = "Hook";
 		event["Reason"] = "BuffersLost";
 		event["Buffers"] = properties.RealTimeBuffersLost - g_ReportedBuffersLost;
-		LogHookEvent(event);
+		LogHookEvent(event, CurrentFileTime());
 		g_ReportedBuffersLost = properties.RealTimeBuffersLost;
 	}
 }

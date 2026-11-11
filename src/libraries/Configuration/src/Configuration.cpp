@@ -210,8 +210,10 @@ void Configuration::GetDontInject() {
 		if (name.empty()) {
 			throw std::runtime_error("DontInject entries must not be empty");
 		}
-		if (name.find_first_of("*?") != std::string::npos) {
-			throw std::runtime_error("DontInject entries do not support wildcards: \"" + name + "\"");
+		// * and ? are wildcards. The driver matches with FsRtlIsNameInExpression, which also
+		// treats < > and " as DOS wildcards; they cannot appear in a file name anyway
+		if (name.find_first_of("<>\"") != std::string::npos) {
+			throw std::runtime_error("DontInject entries must not contain < > or \": \"" + name + "\"");
 		}
 		if (name.find('\\') == std::string::npos) {
 			continue; // A file name, matched in any folder

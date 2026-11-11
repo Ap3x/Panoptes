@@ -17,5 +17,5 @@ NTSTATUS InjectExclusionsSet(_In_reads_bytes_(Length) PVOID Buffer, _In_ ULONG L
 /// @brief Checks whether a process's image is in the list. PASSIVE_LEVEL only
 /// @param ProcessImagePath The process's NT image path, e.g. from SeLocateProcessImageName.
 /// Full-path entries are compared with the whole path and file-name entries with the part after
-/// the last \, both without regard to case
+/// the last \, both without regard to case. Entries may use * (any characters, \ included) and ?
 BOOLEAN IsInjectionExcluded(_In_ PCUNICODE_STRING ProcessImagePath);

@@ -302,8 +302,12 @@ FLT_PREOP_CALLBACK_STATUS PreCreateCallback(
 
 	BOOLEAN wanted;
 	if (Data->Iopb->MajorFunction != IRP_MJ_CREATE) {
-		// A server creating a named pipe or mailslot
-		wanted = IsGroupEnabled(PANO_FILE_EVENTS_PIPE_MAILSLOT);
+		// A server creating a named pipe or mailslot. Anonymous pipes (CreatePipe, used for
+		// every redirected stdin/stdout) are created with an empty name relative to the
+		// \Device\NamedPipe\ root, so they would all be reported as just "\Device\NamedPipe".
+		// No client can open one by name, so they are not reported
+		wanted = IsGroupEnabled(PANO_FILE_EVENTS_PIPE_MAILSLOT) &&
+			FltObjects->FileObject->FileName.Length > 0;
 	}
 	else if (IsPipeOrMailslot(FltObjects)) {
 		// A client connecting. Opens of the file system's root (the name is empty or "\") are

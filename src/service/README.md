@@ -39,7 +39,7 @@ The service reads `panoptes.config`, a JSON file, from its folder. Check it with
 |-----|------|-------------|
 | `Exclusions` | Path patterns | Files that are not scanned |
 | `LogExclusions` | Path patterns (`*` wildcards) | Events for these paths are not logged; the files are still scanned. Named pipes and mailslots are matched in the form programs open them (`\\.\pipe\name`). |
-| `DontInject` | File names or full paths | Processes the hook DLL is not injected into (no wildcards), e.g. `msedge.exe` or `C:\Tools\app.exe` |
+| `DontInject` | File names or full paths (`*`, `?` wildcards) | Processes the hook DLL is not injected into, e.g. `msedge.exe`, `C:\Tools\app.exe` or `C:\Tools\*` (`*` also matches subfolders) |
 | `FileEvents` | List | The file system event groups the driver reports: `Create`, `Write`, `DeleteRename`, `PipeMailslot`, `Security`, `ExtendedAttributes` |
 | `QuarantineMaliciousFiles` | Boolean | Move detected files to the quarantine folder |
 | `EnforceDetectionActions` | Boolean (default `false`) | Carry out the `kill` and `quarantine` actions of detector rules. When off, those detections are logged and notified only. Kills are always refused for PID 0 and 4, the service, its containers and detector, critical processes, and a process ID reused since the match. Quarantine skips paths in `Exclusions`. |

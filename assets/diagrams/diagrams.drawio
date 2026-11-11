@@ -1,11 +1,23 @@
 <mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0">
   <diagram id="7UfbK1xABAdgq6NYzNfo" name="Overview">
-    <mxGraphModel dx="2049" dy="1076" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1622" dy="752" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
+        <mxCell id="kwNA-tY_2Cx8_3D4-q-M-4" edge="1" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 1;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=alternate;flowAnimationTimingFunction=linear;flowAnimationDuration=2000;" target="kwNA-tY_2Cx8_3D4-q-M-1">
+          <mxGeometry relative="1" x="-0.0454" as="geometry">
+            <Array as="points">
+              <mxPoint x="370.2" y="527" />
+            </Array>
+            <mxPoint x="352" y="523" as="sourcePoint" />
+            <mxPoint x="386" y="811" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="kwNA-tY_2Cx8_3D4-q-M-2" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Detection&lt;br&gt;&lt;/h1&gt;&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;div style=&quot;font-size: 12px; font-weight: 400;&quot;&gt;The detector communicates via gRPC to the Panoptes Service to pull telemetry and compare against EQL detection rules.&lt;/div&gt;&lt;/h1&gt;" vertex="1">
+          <mxGeometry height="166" width="392.13" x="573.87" y="489.5" as="geometry" />
+        </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-18" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes AMSI Provider&lt;br&gt;&lt;/h1&gt;&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;div style=&quot;font-size: 12px; font-weight: 400;&quot;&gt;A dedicated AMSI provider that be used for .NET Inspection&lt;/div&gt;&lt;/h1&gt;" vertex="1">
-          <mxGeometry height="166" width="268" x="537" y="570" as="geometry" />
+          <mxGeometry height="166" width="392.13" x="573.87" y="598" as="geometry" />
         </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" value="" vertex="1">
           <mxGeometry height="112" width="299" x="-316" y="901" as="geometry" />
@@ -14,8 +26,8 @@
           <mxGeometry relative="1" x="0.3338" as="geometry">
             <Array as="points">
               <mxPoint x="326" y="631" />
-              <mxPoint x="100.3" y="631" />
-              <mxPoint x="100.3" y="957" />
+              <mxPoint x="137" y="631" />
+              <mxPoint x="137" y="957" />
             </Array>
             <mxPoint x="436" y="709" as="sourcePoint" />
             <mxPoint x="73" y="1010" as="targetPoint" />
@@ -28,8 +40,8 @@
           <mxGeometry relative="1" x="0.5409" as="geometry">
             <Array as="points">
               <mxPoint x="313" y="612" />
-              <mxPoint x="78" y="612" />
-              <mxPoint x="78" y="756.5" />
+              <mxPoint x="113" y="612" />
+              <mxPoint x="113" y="737.5" />
             </Array>
             <mxPoint x="75" y="450" as="sourcePoint" />
             <mxPoint x="-45" y="726" as="targetPoint" />
@@ -39,10 +51,10 @@
           <mxGeometry height="127" width="305" x="-74" y="448" as="geometry" />
         </mxCell>
         <mxCell id="11LjAQhsMhpzE4_2Gh9C-8" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes User Mode Hooks&lt;br&gt;&lt;/h1&gt;&lt;div&gt;The user mode hook DLLs utilize Microsoft Detours to hook common Windows API that could be used maliciously. Depending on the specific Windows API a post call check will be performed prior to emitting an ETW event. These events are consumed by the Panoptes Service.&lt;br&gt;&lt;/div&gt;" vertex="1">
-          <mxGeometry height="130" width="330" x="-351" y="574" as="geometry" />
+          <mxGeometry height="130" width="452" x="-351" y="574" as="geometry" />
         </mxCell>
         <mxCell id="11LjAQhsMhpzE4_2Gh9C-16" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" value="" vertex="1">
-          <mxGeometry height="103" width="251" x="-301" y="705" as="geometry" />
+          <mxGeometry height="103" width="251" x="-301" y="686" as="geometry" />
         </mxCell>
         <mxCell id="11LjAQhsMhpzE4_2Gh9C-15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;dashPattern=12 12;" value="" vertex="1">
           <mxGeometry height="115" width="312" x="165" y="739" as="geometry" />
@@ -68,14 +80,14 @@
             <mxPoint x="814.25" y="339" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="2Nh9rb_-xzqOD59swjkN-45" edge="1" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 1;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=alternate;flowAnimationTimingFunction=linear;flowAnimationDuration=2000;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="CXB1Ufp8fhSvT8PdVjaL-7">
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-45" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 1;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=alternate;flowAnimationTimingFunction=linear;flowAnimationDuration=2000;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;">
           <mxGeometry relative="1" x="0.2307" as="geometry">
             <Array as="points">
-              <mxPoint x="360.4" y="650" />
-              <mxPoint x="394.3" y="650" />
+              <mxPoint x="356.03" y="648" />
+              <mxPoint x="389.93" y="648" />
             </Array>
-            <mxPoint x="341.25" y="455.25" as="sourcePoint" />
-            <mxPoint x="479.02127659574444" y="733" as="targetPoint" />
+            <mxPoint x="356.005" y="454.25" as="sourcePoint" />
+            <mxPoint x="389.88" y="742" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="2Nh9rb_-xzqOD59swjkN-61" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=12 12;strokeWidth=3;startArrow=classic;startFill=1;flowAnimation=1;flowAnimationDirection=normal;flowAnimationTimingFunction=linear;flowAnimationDuration=1000;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="nqpikjvwoDamXcm8Fm9y-3">
@@ -88,10 +100,10 @@
           <mxGeometry height="76.5" width="76.5" x="303" y="379.75" as="geometry" />
         </mxCell>
         <mxCell id="2Nh9rb_-xzqOD59swjkN-33" parent="1" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" value="x86 API Hooking " vertex="1">
-          <mxGeometry height="64" width="64" x="-142.99655172413804" y="714.2503448275863" as="geometry" />
+          <mxGeometry height="64" width="64" x="-142.99655172413804" y="695.2503448275863" as="geometry" />
         </mxCell>
         <mxCell id="2Nh9rb_-xzqOD59swjkN-34" parent="1" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" value="x86_64 API Hooking " vertex="1">
-          <mxGeometry height="64" width="64" x="-266.99655172413804" y="714.2503448275863" as="geometry" />
+          <mxGeometry height="64" width="64" x="-266.99655172413804" y="695.2503448275863" as="geometry" />
         </mxCell>
         <mxCell id="2Nh9rb_-xzqOD59swjkN-36" parent="1" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" value="Panoptes Container" vertex="1">
           <mxGeometry height="76.5" width="76.5" x="214.25" y="742" as="geometry" />
@@ -115,7 +127,7 @@
           <mxGeometry height="79.43" width="79.43" x="115.51" y="216" as="geometry" />
         </mxCell>
         <mxCell id="11LjAQhsMhpzE4_2Gh9C-7" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Container&lt;br&gt;&lt;/h1&gt;The container&#39;s act as a surrogate for the Panoptes Extensibility DLLs and communicate back to the Panoptes Service of the results from the scan." vertex="1">
-          <mxGeometry height="108" width="320" x="490" y="739" as="geometry" />
+          <mxGeometry height="108" width="476" x="490" y="739" as="geometry" />
         </mxCell>
         <mxCell id="11LjAQhsMhpzE4_2Gh9C-9" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Linter&lt;br&gt;&lt;/h1&gt;The linter ensures that the supplied Panoptes JSON configuration has all the correct fields and required data to begin operation." vertex="1">
           <mxGeometry height="112" width="261" x="-351" y="209" as="geometry" />
@@ -124,7 +136,7 @@
           <mxGeometry height="76.5" width="76.5" x="-45" y="460" as="geometry" />
         </mxCell>
         <mxCell id="4dgLIrs-NOxHsrDhryPH-1" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Kernel Driver&lt;br&gt;&lt;/h1&gt;The filesystem filter driver is able to listen to specific file system events. In addition, the driver is subscribed to system kernel callbacks to monitor process creation, loading of images, registry changes, object handles. The driver uses an inverted call structure to reply to event requests sent from the Panoptes Service." vertex="1">
-          <mxGeometry height="152" width="378" x="427" y="31" as="geometry" />
+          <mxGeometry height="152" width="539" x="427" y="53" as="geometry" />
         </mxCell>
         <mxCell id="4dgLIrs-NOxHsrDhryPH-6" edge="1" parent="1" source="4dgLIrs-NOxHsrDhryPH-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;startArrow=classic;startFill=1;endArrow=none;endFill=0;" target="2Nh9rb_-xzqOD59swjkN-32">
           <mxGeometry relative="1" x="0.2069" as="geometry">
@@ -144,10 +156,10 @@
           <mxGeometry height="64" width="64" x="315.50034482758633" y="75.00068965517244" as="geometry" />
         </mxCell>
         <mxCell id="nqpikjvwoDamXcm8Fm9y-11" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Extensibility &lt;/h1&gt;&lt;div&gt;Each module provides Panoptes with a method of identifying malicious files or memory buffers on the system.&lt;/div&gt;" vertex="1">
-          <mxGeometry height="100" width="320" x="490" y="884" as="geometry" />
+          <mxGeometry height="100" width="476" x="490" y="884" as="geometry" />
         </mxCell>
         <mxCell id="nqpikjvwoDamXcm8Fm9y-14" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Log Files&lt;br&gt;&lt;/h1&gt;&lt;div&gt;The log file(s) contain parsable JSON events on each line detailing an event that was detected from the kernel, user mode hooks, service actions, or extensibility&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
-          <mxGeometry height="118" width="273" x="537" y="203" as="geometry" />
+          <mxGeometry height="118" width="429" x="537" y="203" as="geometry" />
         </mxCell>
         <mxCell id="CXB1Ufp8fhSvT8PdVjaL-6" edge="1" parent="1" source="CXB1Ufp8fhSvT8PdVjaL-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;dashed=1;dashPattern=1 4;flowAnimation=1;" target="CXB1Ufp8fhSvT8PdVjaL-7">
           <mxGeometry relative="1" as="geometry" />
@@ -164,24 +176,24 @@
         <mxCell id="CXB1Ufp8fhSvT8PdVjaL-15" parent="1" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" value="Panoptes CLI Scanner&#xa;" vertex="1">
           <mxGeometry height="76.5" width="76.5" x="116.97" y="460" as="geometry" />
         </mxCell>
-        <mxCell id="2Nh9rb_-xzqOD59swjkN-60" edge="1" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;flowAnimation=0;flowAnimationDuration=1000;exitX=1;exitY=0.25;exitDx=0;exitDy=0;" target="2Nh9rb_-xzqOD59swjkN-52">
-          <mxGeometry relative="1" x="0.0098" as="geometry">
+        <mxCell id="2Nh9rb_-xzqOD59swjkN-60" edge="1" parent="1" source="2Nh9rb_-xzqOD59swjkN-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;flowAnimation=0;flowAnimationDuration=1000;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="2Nh9rb_-xzqOD59swjkN-52">
+          <mxGeometry relative="1" x="-0.0922" as="geometry">
             <Array as="points">
-              <mxPoint x="420" y="398.9" />
-              <mxPoint x="420" y="272.3" />
+              <mxPoint x="407.3" y="398.9" />
+              <mxPoint x="407.3" y="250.5" />
             </Array>
             <mxPoint x="382" y="529.0123456790122" as="sourcePoint" />
             <mxPoint x="484" y="345" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-2" parent="1" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/file-types-3/32/file_DLL-64.png;" value="Panoptes &#xa;AMSI Provider" vertex="1">
-          <mxGeometry height="64" width="64" x="453.13" y="592" as="geometry" />
+          <mxGeometry height="64" width="64" x="490" y="620" as="geometry" />
         </mxCell>
         <mxCell id="11LjAQhsMhpzE4_2Gh9C-10" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Service&lt;br&gt;&lt;/h1&gt;&lt;div&gt;The Panoptes Service is the main brain to the whole operation. The service consumes the Kernel Driver Events in real time and also consume ETW events from the User Mode Hook DLLs. When a never before seen executable is ran that isn&#39;t logged in the Rocks Database a request is sent to the Panoptes Yara container to be examined for malicious attributes. Additionally, a memory scanning request may be sent to the Panoptes Extensibility to further examine the memory buffer region. The service communicates containers via gRPC (Protocol Buffers). Near real time responses are sent from the containers back to the service for a termination or not to occur.&lt;/div&gt;" vertex="1">
-          <mxGeometry height="193" width="370" x="440" y="367" as="geometry" />
+          <mxGeometry height="156.25" width="518.77" x="447.23" y="319" as="geometry" />
         </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-5" connectable="0" parent="1" style="group" value="" vertex="1">
-          <mxGeometry height="82" width="76.25" x="447" y="224.79" as="geometry" />
+          <mxGeometry height="82" width="76.25" x="447" y="203" as="geometry" />
         </mxCell>
         <mxCell id="2Nh9rb_-xzqOD59swjkN-54" parent="Zq4jkDt9gwI9zMUbK-w_-5" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn2.iconfinder.com/data/icons/files-67/240/timestamps_log_types_documents-64.png;" value="" vertex="1">
           <mxGeometry height="69" width="69" x="7.25" as="geometry" />
@@ -200,7 +212,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-10" parent="1" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;connectable=0;noLabel=0;" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Panoptes Machine Learning Model&lt;br&gt;&lt;/h1&gt;&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;div style=&quot;font-size: 12px; font-weight: 400;&quot;&gt;A model that was trained on public malware samples and non-malicious samples to detect malicious executables.&lt;/div&gt;&lt;/h1&gt;" vertex="1">
-          <mxGeometry height="86" width="405.54" x="-351" y="809" as="geometry" />
+          <mxGeometry height="86" width="452" x="-351" y="797" as="geometry" />
         </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-11" parent="1" style="image;html=1;image=img/lib/clip_art/computers/Database_128x128.png;labelPerimeter=1;" value="Panoptes Malware Model" vertex="1">
           <mxGeometry height="64" width="64" x="-267" y="919" as="geometry" />
@@ -217,10 +229,13 @@
           <mxGeometry height="76.5" width="76.5" x="-126.5" y="907.5" as="geometry" />
         </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-16" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontColor=#FF0000;rotation=0;multiple=0;labelBorderColor=#FF0000;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;IN PROGRESS&lt;/font&gt;&lt;/b&gt;" vertex="1">
-          <mxGeometry height="30" width="139.1" x="-126.50000000000003" y="871" as="geometry" />
+          <mxGeometry height="30" width="139.1" x="-184.10000000000002" y="865" as="geometry" />
         </mxCell>
         <mxCell id="Zq4jkDt9gwI9zMUbK-w_-17" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontColor=#FF0000;rotation=0;multiple=0;labelBorderColor=#FF0000;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;IN PROGRESS&lt;/font&gt;&lt;/b&gt;" vertex="1">
-          <mxGeometry height="30" width="139.1" x="601.4520668332077" y="663.9953810567666" as="geometry" />
+          <mxGeometry height="30" width="139.1" x="676.0020668332077" y="665.9953810567666" as="geometry" />
+        </mxCell>
+        <mxCell id="kwNA-tY_2Cx8_3D4-q-M-1" parent="1" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://cdn3.iconfinder.com/data/icons/file-extension-28/267/exe-1024.png;" value="Panoptes Detector" vertex="1">
+          <mxGeometry height="76.5" width="76.5" x="483.75" y="486" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

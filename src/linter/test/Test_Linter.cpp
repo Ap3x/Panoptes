@@ -179,7 +179,7 @@ TEST_F(ShippedConfiguration, ScanExclusions) {
 
 
 TEST_F(ShippedConfiguration, DontInjectNamesAreUniqueFileNames) {
-	// Parse rejects paths and wildcards; the driver compares names without regard to case
+	// The driver compares names without regard to case
 	const auto& names = s_config->m_dontInject;
 	EXPECT_FALSE(names.empty());
 	for (size_t i = 0; i < names.size(); i++) {
@@ -256,11 +256,19 @@ TEST(DontInject, AcceptsFileNamesAndFullPaths) {
 	EXPECT_EQ(names[2], "d:\\x\\y.exe"); // / is normalized to \ like the other path settings
 }
 
-TEST(DontInject, RejectsRelativeUncFolderAndWildcardEntries) {
+TEST(DontInject, AcceptsWildcards) {
+	auto names = ParseDontInject(R"(["splunk*.exe", "C:\\Program Files\\SplunkUniversalForwarder\\bin\\*", "app?.exe"])");
+	ASSERT_EQ(names.size(), 3u);
+	EXPECT_EQ(names[1], "C:\\Program Files\\SplunkUniversalForwarder\\bin\\*");
+}
+
+TEST(DontInject, RejectsRelativeUncFolderAndDosWildcardEntries) {
 	EXPECT_THROW(ParseDontInject(R"(["Tools\\app.exe"])"), std::runtime_error);
 	EXPECT_THROW(ParseDontInject(R"(["\\\\server\\share\\app.exe"])"), std::runtime_error);
 	EXPECT_THROW(ParseDontInject(R"(["C:\\Tools\\"])"), std::runtime_error);
-	EXPECT_THROW(ParseDontInject(R"(["*.exe"])"), std::runtime_error);
+	EXPECT_THROW(ParseDontInject(R"(["*:\\Tools\\app.exe"])"), std::runtime_error); // no wildcard drive
+	EXPECT_THROW(ParseDontInject(R"(["<.exe"])"), std::runtime_error); // DOS wildcards in the driver
+	EXPECT_THROW(ParseDontInject(R"(["app\".exe"])"), std::runtime_error);
 	EXPECT_THROW(ParseDontInject(R"([""])"), std::runtime_error);
 	EXPECT_THROW(ParseDontInject(R"("msedge.exe")"), std::runtime_error);
 }

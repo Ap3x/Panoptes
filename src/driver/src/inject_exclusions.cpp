@@ -79,6 +79,11 @@ NTSTATUS InjectExclusionsSet(PVOID Buffer, ULONG Length)
 		for (ULONG i = 0; i < count; i++) {
 			// Validated above: non-empty, terminated, at most PANO_MAX_INJECTION_EXCLUSION_LENGTH
 			USHORT nameLength = (USHORT)wcslen(name);
+			// Upper case, as FsRtlIsNameInExpression requires of a pattern when ignoring case.
+			// Plain names are compared ignoring case anyway
+			for (USHORT c = 0; c < nameLength; c++) {
+				name[c] = RtlUpcaseUnicodeChar(name[c]);
+			}
 			newList->Names[i].Buffer = name;
 			newList->Names[i].Length = nameLength * sizeof(WCHAR);
 			newList->Names[i].MaximumLength = newList->Names[i].Length + sizeof(WCHAR);
@@ -100,6 +105,16 @@ NTSTATUS InjectExclusionsSet(PVOID Buffer, ULONG Length)
 
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[+] Panoptes: Injection exclusion list set (%lu names)\n", count);
 	return STATUS_SUCCESS;
+}
+
+static BOOLEAN HasWildcard(PCUNICODE_STRING Name)
+{
+	for (USHORT i = 0; i < Name->Length / sizeof(WCHAR); i++) {
+		if (Name->Buffer[i] == L'*' || Name->Buffer[i] == L'?') {
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 BOOLEAN IsInjectionExcluded(PCUNICODE_STRING ProcessImagePath)
@@ -134,7 +149,13 @@ BOOLEAN IsInjectionExcluded(PCUNICODE_STRING ProcessImagePath)
 			// Any other name is a file name and matches the image in any folder
 			PCUNICODE_STRING entry = &g_List->Names[i];
 			PCUNICODE_STRING candidate = (entry->Buffer[0] == L'\\') ? ProcessImagePath : &fileName;
-			if (RtlEqualUnicodeString(candidate, entry, TRUE)) {
+			// * matches any characters, \ included, so C:\Tools\* covers subfolders too; ? matches
+			// one character. The service only sends * and ? (Configuration rejects < > ", which
+			// FsRtlIsNameInExpression would treat as DOS wildcards)
+			BOOLEAN matched = HasWildcard(entry) ?
+				FsRtlIsNameInExpression((PUNICODE_STRING)entry, (PUNICODE_STRING)candidate, TRUE, NULL) :
+				RtlEqualUnicodeString(candidate, entry, TRUE);
+			if (matched) {
 				excluded = TRUE;
 				break;
 			}

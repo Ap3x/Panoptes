@@ -8,11 +8,11 @@
             "name": "Run Panoptes Yara Test",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/tests/Debug/Test_PanoptesYara.exe",
+            "program": "${workspaceFolder}/bin/Debug/tests/Test_PanoptesYara.exe",
             "args": [],
             "stopAtEntry": false,
             "environment": [],
-            "cwd": "${workspaceFolder}/bin/tests/Debug/",
+            "cwd": "${workspaceFolder}/bin/Debug/tests/",
             "console": "integratedTerminal"
         },
         {
@@ -21,6 +21,19 @@
             "request": "launch",
             "program": "${workspaceFolder}/bin/Debug/PanoptesService.exe",
             "args": [],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/",
+            "console": "integratedTerminal"
+        },
+        {
+            // Full chain with the kernel driver: VS Code must run elevated and the
+            // Panoptes driver must be installed and running
+            "name": "Run Panoptes Service (Driver)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/PanoptesService.exe",
+            "args": ["--driver"],
             "stopAtEntry": false,
             "environment": [],
             "cwd": "${workspaceFolder}/bin/Debug/",
@@ -36,6 +49,143 @@
             "environment": [],
             "cwd": "${workspaceFolder}/bin/Debug/",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Run PanoptesScanCLI",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/PanoptesScanCLI.exe",
+            "args": ["--file", "${input:fileToScan}"],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/",
+            "console": "integratedTerminal",
+            "preLaunchTask": "Wait for Panoptes Service"
+        },
+        {
+            "name": "Run PanoptesScan",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/PanoptesScan.exe",
+            "args": ["${input:fileToScan}"],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/",
+            "console": "integratedTerminal",
+            "preLaunchTask": "Wait for Panoptes Service"
+        },
+        {
+            "name": "Run PanoptesLinter",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/PanoptesLinter.exe",
+            "args": ["${input:configToLint}"],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/",
+            "console": "integratedTerminal"
+        },
+        {
+            // Runs the test's cases directly in the debugged process with the hook DLL loaded, so
+            // breakpoints in src/hook and in the test cases hit. The "[Panoptes]" hook messages
+            // appear in the Debug Console; nothing is checked against the expected messages
+            "name": "Debug Hook Test",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/tests/${input:hookTest}${input:hookArch}.exe",
+            "args": ["--child"],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/tests/",
+            "console": "integratedTerminal"
+        },
+        {
+            // Normal pass/fail run. The cases run in a child process the test itself debugs, so
+            // only the harness's checking code can be debugged here, not the hooks
+            "name": "Run Hook Test",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/tests/${input:hookTest}${input:hookArch}.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "environment": [],
+            "cwd": "${workspaceFolder}/bin/Debug/tests/",
+            "console": "integratedTerminal"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "fileToScan",
+            "type": "promptString",
+            "description": "File for Panoptes to scan",
+            "default": "C:\\Windows\\System32\\notepad.exe"
+        },
+        {
+            "id": "configToLint",
+            "type": "promptString",
+            "description": "Panoptes configuration file to lint (relative to bin/Debug)",
+            "default": "panoptes.config"
+        },
+        {
+            "id": "hookTest",
+            "type": "pickString",
+            "description": "Hook test to launch",
+            "options": [
+                "Test_NtWriteVirtualMemory",
+                "Test_NtProtectVirtualMemory",
+                "Test_NtAllocateVirtualMemory",
+                "Test_NtReadVirtualMemory",
+                "Test_NtMapViewOfSection",
+                "Test_NtUnmapViewOfSection",
+                "Test_NtCreateThreadEx",
+                "Test_NtQueueApcThread",
+                "Test_NtSetInformationProcess",
+                "Test_PanoptesDLL"
+            ],
+            "default": "Test_NtWriteVirtualMemory"
+        },
+        {
+            "id": "hookArch",
+            "type": "pickString",
+            "description": "Architecture of the test and hook DLL",
+            "options": ["x64", "x86"],
+            "default": "x64"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Debug PanoptesYara (Service + Container + Yara)",
+            "configurations": [
+                "Run Panoptes Service",
+                "Run Panoptes Container With Yara"
+            ],
+            "stopAll": true
+        },
+        {
+            "name": "Debug Driver Events (Service + Container + Yara)",
+            "configurations": [
+                "Run Panoptes Service (Driver)",
+                "Run Panoptes Container With Yara"
+            ],
+            "stopAll": true
+        },
+        {
+            "name": "Debug PanoptesScanCLI (Service + Container + Yara)",
+            "configurations": [
+                "Run Panoptes Service",
+                "Run Panoptes Container With Yara",
+                "Run PanoptesScanCLI"
+            ],
+            "stopAll": true
+        },
+        {
+            "name": "Debug PanoptesScan (Service + Container + Yara)",
+            "configurations": [
+                "Run Panoptes Service",
+                "Run Panoptes Container With Yara",
+                "Run PanoptesScan"
+            ],
+            "stopAll": true
         }
     ]
 }

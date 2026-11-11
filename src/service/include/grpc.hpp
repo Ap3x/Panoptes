@@ -6,8 +6,15 @@ class PanoptesContainerClient {
 public:
 	PanoptesContainerClient(int ContainerPort);
 	bool SendPeScanRequest(std::string PePath, std::string FileHash);
-	bool SendMemoryScanRequest(DWORD ProcessId);
 };
 
 void SelfQueuePeScan(std::string pePath, std::string fileHash);
 VOID RunServiceServer(LPVOID lpParam);
+
+/// @brief Shuts down the server RunServiceServer started, cancelling calls still in flight
+/// after a short grace period, so RunServiceServer returns. Safe to call if it never started
+VOID StopServiceServer();
+
+/// @brief Moves a file into C:\ProgramData\Panoptes\Quarantine
+/// @return Whether the file was moved
+bool MoveFileToQuarantine(std::string filePath);

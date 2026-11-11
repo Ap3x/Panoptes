@@ -1,0 +1,35 @@
+# Anti-analysis and credential access seen through the hooks. See injection.yaml for the rule
+# syntax.
+
+# BeingDebugged (PEB offset 0x2 in both bitnesses) cleared or set by hand hides a debugger
+- name: being_debugged_tampered
+  description: The PEB BeingDebugged flag was written directly
+  severity: medium
+  action: alert
+  sequence:
+    - Event == "PEBWritten" && PebOffset == "0x2" && Size == 1
+
+# User mode cannot make a process protected (PPL); attempts come from tools probing for it or
+# trying to shield malware
+- name: process_protection_tamper
+  description: A process tried to set process protection with NtSetInformationProcess
+  severity: medium
+  action: alert
+  sequence:
+    - Event == "ProtectionSetAttempt"
+
+# Dumping LSASS starts by walking its PEB to find loaded modules
+- name: lsass_peb_read
+  description: A process read the PEB of lsass.exe, as credential dumping tools do
+  severity: high
+  action: alert
+  sequence:
+    - 'Event == "PEBRead" && Remote == true && lower(TargetImage) endsWith "\\lsass.exe"'
+
+# A PE region in another process switched to executable (write RW, then flip to RX)
+- name: remote_pe_made_executable
+  description: A PE image written into another process was made executable
+  severity: high
+  action: alert
+  sequence:
+    - Event == "PEMadeExecutable" && Remote == true

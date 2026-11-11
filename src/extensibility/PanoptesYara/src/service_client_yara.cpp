@@ -7,6 +7,13 @@ using grpc::Status;
 
 std::unique_ptr<PanoptesService::Stub> stub_;
 
+// Debug builds of the service run unelevated and publish the port under HKCU
+#ifdef _DEBUG
+#define PANOPTES_REG_ROOT HKEY_CURRENT_USER
+#else
+#define PANOPTES_REG_ROOT HKEY_LOCAL_MACHINE
+#endif // _DEBUG
+
 /// @brief Get the Panoptes Service port from the registry
 /// @param portValue The port value from the registry
 /// @return True if the port value was retrieved successfully, false otherwise
@@ -17,7 +24,7 @@ bool GetRegistryPortValue(DWORD& portValue) {
 
     // Open the key
     LONG lResult = RegOpenKeyExA(
-        HKEY_LOCAL_MACHINE,
+        PANOPTES_REG_ROOT,
         "SOFTWARE\\Panoptes",
         0,
         KEY_READ,
@@ -93,8 +100,9 @@ bool PanoptesServiceClient::Hello(ExtensibilityType extensibilityType, int Conta
 /// @param pePath The path of the file that was scanned
 /// @param fileHash The hash of the file that was scanned
 /// @param detectedRules The rules that were detected
+/// @param signature The result of verifying the file's signature
 /// @return True if the results were sent successfully, false otherwise
-bool PanoptesServiceClient::SendResults_Yara(std::string pePath, std::string fileHash, std::vector<std::string> detectedRules) {
+bool PanoptesServiceClient::SendResults_Yara(std::string pePath, std::string fileHash, std::vector<std::string> detectedRules, const SignatureInfo& signature) {
 	ClientContext context;
 	AckMessage reply;
 	ContainerReply request;
@@ -106,6 +114,16 @@ bool PanoptesServiceClient::SendResults_Yara(std::string pePath, std::string fil
 	for (auto rule : detectedRules) {
 		results.add_detected_rules(rule);
 	}
+
+	char trustStatus[11];
+	sprintf_s(trustStatus, "0x%08X", static_cast<unsigned long>(signature.trustStatus));
+
+	ScanSignature* signatureResults = results.mutable_signature();
+	signatureResults->set_signed_(signature.isSigned);
+	signatureResults->set_trusted(signature.trusted);
+	signatureResults->set_catalog_signed(signature.catalogSigned);
+	signatureResults->set_signer(signature.signer);
+	signatureResults->set_trust_status(trustStatus);
 
 	request.mutable_yara_scan()->CopyFrom(results);
 

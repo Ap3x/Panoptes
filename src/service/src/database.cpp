@@ -1,5 +1,6 @@
 #include "database.hpp"
 #include "pano_log.h"
+#include "utils.h"
 #include <nlohmann/json.hpp>
 
 #include "rocksdb/db.h"
@@ -21,13 +22,29 @@ rocksdb::DB* m_database = NULL;
 rocksdb::Options m_options;
 
 ERRORCODE PanoptesDatabase::InitializeDatabase() {
-	Status s = rocksdb::DB::Open(m_options, PANOPTES_DATABASE_PATH, &m_database);
+#ifdef _DEBUG
+	std::string databasePath = GetExecutableDirectory() + "\\database";
+#else
+	std::string databasePath = PANOPTES_DATABASE_PATH;
+#endif // _DEBUG
+
+	Status s = rocksdb::DB::Open(m_options, databasePath, &m_database);
 	if (s.ok()) {
 		return PANO_SUCCESS;
 	}
 	else {
 		return DB_INITIALIZATION;
 	}
+}
+
+void PanoptesDatabase::CloseDatabase() {
+	if (m_database == NULL) {
+		return;
+	}
+
+	m_database->Close();
+	delete m_database;
+	m_database = NULL;
 }
 
 BOOL PanoptesDatabase::AddEntry(std::string key, std::string entry) {

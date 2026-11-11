@@ -3,17 +3,18 @@
 
 /// @brief The acceptable configuration parameters
 std::vector<std::string> AcceptableConfigParams = {
-	"ExtensibilitySelected", 
 	"Exclusions",
-	"IgnoreDriver",
 	"QuarantineMaliciousFiles",
-	"EventProviders"
+	"LogExclusions",
+	"DontInject",
+	"FileEvents",
+	"EnforceDetectionActions"
 };
 
 /// @brief The required configuration parameters
 std::vector<std::string> RequiredConfigParams = {
-	"ExtensibilitySelected",
-	"EventProviders"
+	"Exclusions",
+	"QuarantineMaliciousFiles"
 };
 
 /// @brief Check if a file exists
@@ -105,6 +106,18 @@ int main(int argc, char* argv[]) {
 
 	if (RequiredConfigParams.size() == 0) {
 		goodConfig = true;
+	}
+#pragma endregion
+
+#pragma region Check setting types
+	if (goodConfig) {
+		try {
+			config.ValidateSettings();
+		}
+		catch (const std::exception& e) {
+			std::cerr << "[!] Error: " << e.what() << std::endl;
+			goodConfig = false;
+		}
 	}
 #pragma endregion
 

@@ -15,23 +15,24 @@ set(SOURCE_FILES
     src/callbacks.cpp
     src/driver.cpp
     src/pano_filter.cpp
-    src/inject.cpp
     src/ioctl.cpp
-    src/pano_query.cpp
     src/trace.cpp
+    src/event_queue.cpp
+    src/inject_exclusions.cpp
 )
 
 # Define header files
 set(HEADER_FILES
     include/driver_constants.h
+    include/pano_events.h
     include/pano_filter.h
-    include/inject.h
     include/ioctl.h
-    include/pano_query.h
     include/shellcode.h
     include/structs.h
     include/trace.h
     include/callbacks.h
+    include/event_queue.h
+    include/inject_exclusions.h
 )
 
 # Add the driver target
@@ -53,12 +54,14 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Set target name to match MSVC project
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "Panoptes")
 
-# Set output directory to match MSVC project structure
+# Output to bin/<config>/driver alongside the rest of the build output
+set(DRIVER_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/driver")
+
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/driver"
+    RUNTIME_OUTPUT_DIRECTORY "${DRIVER_OUTPUT_DIR}"
 )
 
-target_link_libraries(${PROJECT_NAME} WDK::FLTMGR)
+target_link_libraries(${PROJECT_NAME} WDK::FLTMGR WDK::WDMSEC)
 
 # Set entry point for the driver
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "/ENTRY:DriverEntry /INTEGRITYCHECK")
@@ -67,26 +70,27 @@ set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "/ENTRY:DriverEntry 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     ${CMAKE_CURRENT_SOURCE_DIR}/driver-files/Panoptes.inf
-    ${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}/driver/$<CONFIG>/Panoptes.inf
+    ${DRIVER_OUTPUT_DIR}/Panoptes.inf
     COMMENT "Copying INF file to output directory"
 )
 
 # Run Inf2Cat to create catalog file
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND "${x86_BUILD_TOOLS_PATH}Inf2Cat.exe" /driver:${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG> /os:10_x64 /verbose
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG>"
+    COMMAND "${x86_BUILD_TOOLS_PATH}Inf2Cat.exe" /driver:${DRIVER_OUTPUT_DIR} /os:10_x64 /verbose
+    WORKING_DIRECTORY "${DRIVER_OUTPUT_DIR}"
     COMMENT "Running Inf2Cat to create catalog file"
 )
 
+# Sign with the Panoptes test certificate (created on first use, then reused) and export
+# that same certificate as Panoptes.cer. package-target.ps1 signs the hook DLLs with it too
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-  COMMAND "${x64_BUILD_TOOLS_PATH}/makecert.exe" -r -pe -ss PanoptesCertStore -n "CN=Panoptes" "${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG>/Panoptes.cer"
-  COMMENT "Generating a driver certificate"
-  AUTO
-)
-
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-  COMMAND "${x64_BUILD_TOOLS_PATH}/signtool.exe" sign /a /v /fd sha256 /s PanoptesCertStore /n "Panoptes" /t http://timestamp.digicert.com "${CMAKE_SOURCE_DIR}/bin/driver/$<CONFIG>/Panoptes.sys"
+  COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/sign-panoptes.ps1"
+    -ToolsDir "${x64_BUILD_TOOLS_PATH}"
+    -Files "${DRIVER_OUTPUT_DIR}/Panoptes.sys"
+    -ExportCer "${DRIVER_OUTPUT_DIR}/Panoptes.cer"
   COMMENT "Signing the driver"
+  VERBATIM
 )
 
 # add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

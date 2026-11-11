@@ -9,6 +9,7 @@
       <ComponentGroupRef Id="DriverComponents" />
       <ComponentGroupRef Id="AssetsComponents" />
       <ComponentGroupRef Id="DataComponents" />
+      <ComponentGroupRef Id="RulesComponents" />
       <ComponentRef Id="ApplicationShortcut" />
 		</Feature>
 

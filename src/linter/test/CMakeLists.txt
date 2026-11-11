@@ -27,9 +27,22 @@ add_executable(
   Test_Linter
   Test_Linter.cpp
 )
+find_package(nlohmann_json REQUIRED)
+
 target_link_libraries(
   Test_Linter
   GTest::gtest_main
+  Configuration
+  nlohmann_json::nlohmann_json
+)
+
+# The ShippedConfiguration tests check the configuration that is shipped
+target_compile_definitions(Test_Linter PRIVATE
+  PANOPTES_SHIPPED_CONFIG="${CMAKE_SOURCE_DIR}/assets/panoptes.config"
+)
+
+set_target_properties(Test_Linter PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/tests"
 )
 
 if(MSVC)

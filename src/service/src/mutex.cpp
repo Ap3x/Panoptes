@@ -30,8 +30,15 @@ ERRORCODE MutexExist() {
 	return PANO_SUCCESS;
 }
 
+// The mutex is created unowned and only its name marks the service as running, so it is
+// closed rather than released. Safe to call more than once
 ERRORCODE DestroyMutex() {
-	if (!ReleaseMutex(g_mutex))
+	if (g_mutex == NULL)
+		return PANO_SUCCESS;
+
+	BOOL closed = CloseHandle(g_mutex);
+	g_mutex = NULL;
+	if (!closed)
 		return CLEAN_HANDLE;
 
 	return PANO_SUCCESS;

@@ -1,14 +1,75 @@
 {
-  "dependencies": [
-    "detours",
-    {
-      "name": "grpc",
-      "version>=": "1.71.0"
+  "name": "panoptes",
+  "version": "1.0.0",
+  "description": "Each feature holds the packages of one component. The root CMakeLists.txt turns the BUILD_<COMPONENT> options into VCPKG_MANIFEST_FEATURES, so only the enabled components' packages are installed",
+  "default-features": [
+    "service",
+    "container",
+    "yara",
+    "scanner",
+    "linter",
+    "hook"
+  ],
+  "features": {
+    "service": {
+      "description": "PanoptesService",
+      "dependencies": [
+        {
+          "name": "grpc",
+          "version>=": "1.71.0"
+        },
+        {
+          "name": "rocksdb",
+          "version>=": "10.2.1"
+        },
+        "nlohmann-json"
+      ]
     },
-    {
-      "name": "rocksdb",
-      "version>=": "10.2.1"
+    "container": {
+      "description": "PanoptesContainer",
+      "dependencies": [
+        {
+          "name": "grpc",
+          "version>=": "1.71.0"
+        }
+      ]
     },
-    "nlohmann-json"
-  ]
+    "yara": {
+      "description": "PanoptesYara extension",
+      "dependencies": [
+        {
+          "name": "grpc",
+          "version>=": "1.71.0"
+        }
+      ]
+    },
+    "scanner": {
+      "description": "PanoptesScan and PanoptesScanCLI",
+      "dependencies": [
+        {
+          "name": "grpc",
+          "version>=": "1.71.0"
+        },
+        "nlohmann-json"
+      ]
+    },
+    "linter": {
+      "description": "PanoptesLinter",
+      "dependencies": [
+        "nlohmann-json"
+      ]
+    },
+    "hook": {
+      "description": "PanoptesDLL hook DLLs (the x86 DLL uses src/hook/vcpkg.json)",
+      "dependencies": [
+        "detours"
+      ]
+    },
+    "installer": {
+      "description": "PanoptesSetup, built with the WiX installer",
+      "dependencies": [
+        "abseil"
+      ]
+    }
+  }
 }

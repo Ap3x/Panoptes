@@ -6,16 +6,22 @@
 #include "hash.h"
 #include "pano_log.h"
 #include "utils.h"
+#include "service_constants.h"
 
-#include "TrayNotifications.h"
+#include "tray_notifications.h"
 #include "Configuration.hpp"
+#include "detector.h"
+#include "detector_stream.h"
+#include "process_images.h"
+#include <atomic>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <filesystem>
 #include <regex>
+#include <mutex>
+#include <chrono>
 #include <filesystem>
-#include "PanoptesAMSI.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -25,16 +31,36 @@ std::unique_ptr<PanoptesExtensibility::Stub> stub_;
 std::unique_ptr<PanoptesService::Stub> selfStub_;
 std::vector<std::pair<ContainerType, int>> g_containerServerPorts;
 PanoptesContext* serviceContext;
+// The port the server listens on, set once it has started. The detector RPCs use it to find
+// the calling process
+static std::atomic<int> g_serverPort{ 0 };
+
+// How long a SubscribeEvents call waits for events before checking whether it was cancelled
+#define PANO_DETECTOR_POLL_MS 250
+
+// A Windows header defines PERMISSION_DENIED as a macro, which breaks StatusCode::PERMISSION_DENIED
+#pragma push_macro("PERMISSION_DENIED")
+#undef PERMISSION_DENIED
+static ::grpc::Status PermissionDenied(const std::string& why) {
+	return ::grpc::Status(::grpc::StatusCode::PERMISSION_DENIED, why);
+}
+#pragma pop_macro("PERMISSION_DENIED")
+
+// "DETECTION_SEVERITY_MEDIUM" without its prefix, lowercased: "medium"
+static std::string EnumWord(const std::string& name, const std::string& prefix) {
+	std::string word = name.rfind(prefix, 0) == 0 ? name.substr(prefix.size()) : name;
+	std::transform(word.begin(), word.end(), word.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+	return word;
+}
 
 
 namespace fs = std::filesystem;
 
-void MoveFileToQuarantine(std::string filePath) {
+bool MoveFileToQuarantine(std::string filePath) {
 	std::string quarantinePath = "C:\\ProgramData\\Panoptes\\Quarantine";
 
-    if (!fs::exists(quarantinePath)) {
-        fs::create_directories(quarantinePath);
-    }
+    std::error_code error;
+    fs::create_directories(quarantinePath, error);
     std::filesystem::path sourcePath(filePath);
     std::filesystem::path destinationPath = fs::path(quarantinePath) / sourcePath.filename();
     try {
@@ -42,7 +68,9 @@ void MoveFileToQuarantine(std::string filePath) {
     }
     catch (const std::filesystem::filesystem_error& e) {
         std::cerr << "Error moving file to quarantine: " << e.what() << std::endl;
+        return false;
     }
+    return true;
 }
 
 bool GetRegistryPortValue(DWORD& portValue)
@@ -53,7 +81,7 @@ bool GetRegistryPortValue(DWORD& portValue)
 
 	// Open the key
 	LONG lResult = RegOpenKeyExA(
-		HKEY_LOCAL_MACHINE,
+		PANOPTES_REG_ROOT,
 		"SOFTWARE\\Panoptes",
 		0,
 		KEY_READ,
@@ -90,17 +118,6 @@ bool GetRegistryPortValue(DWORD& portValue)
 	return true;
 }
 
-bool isPathInExclusions(const std::vector<std::string>& exclusions, const std::string& fullPath)
-{
-	std::filesystem::path fullPathNormalized = std::filesystem::path(fullPath).lexically_normal();
-
-	return std::any_of(exclusions.begin(), exclusions.end(),
-		[&fullPathNormalized](const std::string& path) {
-			std::filesystem::path pathNormalized = std::filesystem::path(path).lexically_normal();
-			return fullPathNormalized.string().find(pathNormalized.string()) == 0;
-		});
-}
-
 bool CheckIfMalicious(std::string jsonString) {
 	nlohmann::json jsonObject = nlohmann::json::parse(jsonString);
 	if (jsonObject.contains("yara_scan") && jsonObject["yara_scan"].contains("detected_rules"))
@@ -112,15 +129,6 @@ bool CheckIfMalicious(std::string jsonString) {
 		}
 	}
 
-	if (jsonObject.contains("amsi_result"))
-	{
-		AmsiScanner::AMSI_RESULT_PANO amsiResult = jsonObject["amsi_result"];
-		if (amsiResult == AmsiScanner::AMSI_RESULT_PANO_DETECTED) {
-			return true;
-		}
-	}
-
-
 	return false;
 }
 
@@ -130,7 +138,7 @@ bool CreateRegistryEntryWithPort(DWORD dwPort) {
 
 	// Create or open the key
 	LONG lResult = RegCreateKeyExA(
-		HKEY_LOCAL_MACHINE,
+		PANOPTES_REG_ROOT,
 		"SOFTWARE\\Panoptes",
 		0,
 		NULL,
@@ -188,23 +196,6 @@ PanoptesContainerClient::PanoptesContainerClient(int containerPort) {
 	stub_ = PanoptesExtensibility::NewStub(channel);
 }
 
-bool PanoptesContainerClient::SendMemoryScanRequest(DWORD processId) {
-	AckMessage reply;
-	ClientContext g_context;
-
-	MemoryScanInfo request;
-	request.set_process_id(processId);
-
-	Status status = stub_->MemoryScan(&g_context, request, &reply);
-
-	if (!status.ok()) {
-		std::cout << status.error_code() << ": " << status.error_message()
-			<< std::endl;
-	}
-
-	return reply.ack_type();
-}
-
 bool PanoptesContainerClient::SendPeScanRequest(std::string pePath, std::string fileHash) {
 	AckMessage reply;
 	ClientContext context;
@@ -223,7 +214,7 @@ bool PanoptesContainerClient::SendPeScanRequest(std::string pePath, std::string 
 
 void SelfQueuePeScan(std::string pePath, std::string fileHash) {
 	auto configuration = serviceContext->config;
-	if (isPathInExclusions(configuration->m_exclusions, pePath)) {
+	if (Configuration::IsPathInList(configuration->m_exclusions, pePath)) {
 		return;
 	}
 
@@ -258,7 +249,15 @@ class PanoptesImpl : public PanoptesService::Service {
 		std::string fileHash = request->file_hash();
 		std::string filePath = request->portable_executable_path();
 		std::string json_string;
-		google::protobuf::util::MessageToJsonString(*request, &json_string, options);
+		// The log line, the database entry and the detection check below are all built from
+		// this JSON, so a scan result that cannot be converted is rejected rather than stored
+		// as an empty or partial entry
+		auto jsonStatus = google::protobuf::util::MessageToJsonString(*request, &json_string, options);
+		if (!jsonStatus.ok()) {
+			std::string message = "Failed to convert the scan result for " + filePath + " to JSON: " + jsonStatus.ToString();
+			std::cerr << message << std::endl;
+			return ::grpc::Status(::grpc::StatusCode::INTERNAL, message);
+		}
 		std::string cleanMsg = CleanUpProtobufMessage(json_string);
 		WriteToLogFile(cleanMsg + "\n");
 
@@ -274,15 +273,12 @@ class PanoptesImpl : public PanoptesService::Service {
 			entry = loadedDB.UpdateEntry(fileHash, cleanMsg);
 		}
 
-		// The PE Module just provides extra analysis on top of the AMSI/Yara Scan
-		if (!request->has_pe_scan()) {
-			if (CheckIfMalicious(entry)) {
-				std::string displayMessage = "Malicious File Detected: " + GetBaseName(filePath);
-				TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
+		if (CheckIfMalicious(entry)) {
+			std::string displayMessage = "Malicious File Detected: " + GetBaseName(filePath);
+			TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
 
-				if (configuration->m_quartine) {
-					MoveFileToQuarantine(filePath);
-				}
+			if (configuration->m_quartine) {
+				MoveFileToQuarantine(filePath);
 			}
 		}
 
@@ -297,7 +293,7 @@ class PanoptesImpl : public PanoptesService::Service {
 		}
 
 		auto configuration = serviceContext->config;
-		if (isPathInExclusions(configuration->m_exclusions, fileToScan)) {
+		if (Configuration::IsPathInList(configuration->m_exclusions, fileToScan)) {
 			std::string message = "File is excluded from scan: " + fileToScan;
 			return ::grpc::Status(::grpc::StatusCode::UNKNOWN, message);
 		}
@@ -325,21 +321,10 @@ class PanoptesImpl : public PanoptesService::Service {
 				if (configuration->m_quartine) {
 					MoveFileToQuarantine(request->portable_executable_path());
 				}
-				
-				for (auto container : g_containerServerPorts) {
-					if (container.first == ContainerType::CONTAINER_TYPE_PE) {
-						PanoptesContainerClient client = PanoptesContainerClient(container.second);
-						client.SendPeScanRequest(request->portable_executable_path(), fileHash);
-					}
-				}
 			}
 		}
 		else {
-
 			for (auto container : g_containerServerPorts) {
-				if (container.first == ContainerType::CONTAINER_TYPE_PE) {
-					continue;
-				}
 				PanoptesContainerClient client = PanoptesContainerClient(container.second);
 				client.SendPeScanRequest(request->portable_executable_path(), fileHash);
 			}
@@ -366,7 +351,105 @@ class PanoptesImpl : public PanoptesService::Service {
 		response->set_ack_type(AckType::SUCCESS);
 		return ::grpc::Status::OK;
 	}
+
+	// Streams every logged event to the detector until it disconnects or the service stops
+	::grpc::Status SubscribeEvents(::grpc::ServerContext* context, const ::DetectorHello* request, ::grpc::ServerWriter<::DetectorEvent>* writer) override {
+		std::string why;
+		if (!IsDetectorPeer(context->peer(), g_serverPort.load(), why)) {
+			std::cerr << "SubscribeEvents refused: " << why << std::endl;
+			return PermissionDenied(why);
+		}
+
+		std::vector<std::string> eventNames(request->event_names().begin(), request->event_names().end());
+		auto subscription = DetectorSubscription::Open(eventNames);
+		if (subscription == nullptr) {
+			return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED, "too many detectors subscribed, or the service is stopping");
+		}
+		std::cout << "Detector " << request->version() << " subscribed to events" << std::endl;
+
+		std::vector<DetectorEventRecord> batch;
+		::DetectorEvent message;
+		while (!context->IsCancelled() && subscription->Wait(batch, PANO_DETECTOR_POLL_MS)) {
+			for (auto& record : batch) {
+				message.set_sequence(record.Sequence);
+				message.set_timestamp(record.Timestamp);
+				message.set_json(std::move(record.Json));
+				// Blocks while the detector is behind; the publisher keeps queueing (or
+				// dropping) meanwhile, so the event threads are never held up
+				if (!writer->Write(message)) {
+					std::cout << "Detector disconnected" << std::endl;
+					return ::grpc::Status::OK;
+				}
+			}
+		}
+		return ::grpc::Status::OK;
+	}
+
+	// Logs a detection to pano.log, notifies, and carries out its action
+	::grpc::Status ReportDetection(::grpc::ServerContext* context, const ::Detection* request, ::AckMessage* response) override {
+		std::string why;
+		if (!IsDetectorPeer(context->peer(), g_serverPort.load(), why)) {
+			std::cerr << "ReportDetection refused: " << why << std::endl;
+			return PermissionDenied(why);
+		}
+
+		std::string outcome = RespondToDetection(*request, *serviceContext->config);
+
+		// Not published to the detector: it already knows, and no rule matches on it
+		nlohmann::ordered_json event;
+		event["Event"] = "Detection";
+		event["Rule"] = request->rule();
+		event["Description"] = request->description();
+		// The same words the rules and detection.log use: "medium", "kill"
+		event["Severity"] = EnumWord(DetectionSeverity_Name(request->severity()), "DETECTION_SEVERITY_");
+		event["Action"] = EnumWord(DetectionAction_Name(request->action()), "DETECTION_ACTION_");
+		event["PID"] = request->process_id();
+		// The detector takes the image from the event, which is empty for processes that started
+		// before the service; the service may still know it
+		std::string image = request->image_path();
+		if (image.empty()) {
+			FILETIME matched;
+			matched.dwLowDateTime = (DWORD)(request->timestamp() & 0xFFFFFFFF);
+			matched.dwHighDateTime = (DWORD)((UINT64)request->timestamp() >> 32);
+			image = ResolveProcessImage(request->process_id(), request->timestamp() != 0 ? matched : CurrentFileTime());
+		}
+		event["Image"] = image;
+		// UTC in the format of every other line, so the log sorts and replays consistently
+		event["Time"] = FormatSystemTime(CurrentFileTime());
+		event["Response"] = outcome;
+		event["EventSequences"] = std::vector<uint64_t>(request->event_sequences().begin(), request->event_sequences().end());
+		WriteToLogFile(event.dump() + "\n");
+
+		std::string displayMessage = request->rule() + " (PID " + std::to_string(request->process_id()) + (image.empty() ? "" : ", " + GetBaseName(image)) + "): " + outcome;
+		TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
+
+		response->set_ack_type(AckType::SUCCESS);
+		response->set_message(outcome);
+		return ::grpc::Status::OK;
+	}
 };
+
+// The running server, so StopServiceServer can shut it down from another thread.
+// g_serverStopping covers a stop that arrives before the server has been built
+static std::mutex g_serverLock;
+static grpc::Server* g_server = nullptr;
+static bool g_serverStopping = false;
+
+// How long calls in flight get to finish before StopServiceServer cancels them
+#define PANO_SERVER_SHUTDOWN_GRACE_MS 2000
+
+VOID StopServiceServer()
+{
+	// Event streams only end when the detector disconnects, so they are ended first; otherwise
+	// each would hold up shutdown until the grace period runs out
+	StopDetectorStreams();
+
+	std::lock_guard<std::mutex> lock(g_serverLock);
+	g_serverStopping = true;
+	if (g_server != nullptr) {
+		g_server->Shutdown(std::chrono::system_clock::now() + std::chrono::milliseconds(PANO_SERVER_SHUTDOWN_GRACE_MS));
+	}
+}
 
 void RunServiceServer(LPVOID lpParam)
 {
@@ -385,8 +468,10 @@ void RunServiceServer(LPVOID lpParam)
 		auto threadError = &serviceContext->threadError;
 		bool threadState = threadError->load();
 		threadError->store(true);
+		return;
 	}
 
+	g_serverPort = selected_port;
 	bool updatedReg = CreateRegistryEntryWithPort(selected_port);
 	if (!updatedReg) {
 		auto threadError = &serviceContext->threadError;
@@ -394,5 +479,17 @@ void RunServiceServer(LPVOID lpParam)
 		threadError->store(true);
 	}
 
+	{
+		std::lock_guard<std::mutex> lock(g_serverLock);
+		if (g_serverStopping) {
+			server->Shutdown();
+		}
+		g_server = server.get();
+	}
+
+	// Returns once StopServiceServer has shut the server down
 	server->Wait();
+
+	std::lock_guard<std::mutex> lock(g_serverLock);
+	g_server = nullptr;
 }

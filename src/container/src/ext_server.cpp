@@ -41,26 +41,6 @@ PeScan PeMessageQueue::dequeue() {
 	return message;
 }
 
-/// @brief The enqueue function enqueues a MemScan message to the queue.
-/// @param message The MemScan message to enqueue.
-/// @return True if the message is enqueued successfully, false otherwise.
-void MemoryMessageQueue::enqueue(const MemScan& message) {
-	std::unique_lock<std::mutex> lock(mutex_);
-	queue_.push(message);
-	cv_.notify_one();
-}
-
-/// @brief The dequeue function dequeues a MemScan messages from the queue.
-/// @return The MemScan message that is dequeued.
-MemScan MemoryMessageQueue::dequeue() {
-	std::unique_lock<std::mutex> lock(mutex_);
-	cv_.wait(lock, [this] { return !queue_.empty(); });
-	MemScan message = queue_.front();
-	queue_.pop();
-
-	return message;
-}
-
 /// @brief The PanoptesImpl class is a class that implements the PanoptesExtensibility::Service 
 /// interface from the gRPC class.
 class PanoptesImpl : public PanoptesExtensibility::Service {
@@ -76,23 +56,6 @@ class PanoptesImpl : public PanoptesExtensibility::Service {
 
 		if (message_queue_pe_ != NULL) {
 			message_queue_pe_->enqueue(scanInfo);
-		}
-
-		response->set_ack_type(AckType::SUCCESS);
-		return ::grpc::Status::OK;
-	}
-
-	/// @brief The MemoryScan function queues a MemScan message to the queue.
-	/// @param context The context of the server.
-	/// @param request The request to scan the memory.
-	/// @param response The response to the request.
-	/// @return The status of the request.
-	::grpc::Status MemoryScan(::grpc::ServerContext* context, const ::MemoryScanInfo* request, ::AckMessage* response) override {
-		MemScan scanInfo;
-		scanInfo.ProcessId = request->process_id();
-
-		if (message_queue_pe_ != NULL) {
-			message_queue_mem_->enqueue(scanInfo);
 		}
 
 		response->set_ack_type(AckType::SUCCESS);

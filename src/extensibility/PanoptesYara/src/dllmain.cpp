@@ -41,17 +41,17 @@ extern "C" PANO_API int PanoBind(int ContainerPort)
 
 /// @brief The entry point for the YARA extensibility
 /// @param data The information about the file to be scanned
-/// @param mem_data The information about the memory to be scanned
 /// @return True if the scan was successful, false otherwise
-extern "C" PANO_API bool PanoEntry(PeScan* data, MemScan* mem_data)
+extern "C" PANO_API bool PanoEntry(PeScan* data)
 {
 	std::string rules = "rules.pkg";
 
 	YaraScanner yaraScan = YaraScanner::YaraScanner(rules.c_str());
 	std::vector<std::string> scanDataResults = yaraScan.YaraScanFile(data->PePath);
+	SignatureInfo signature = VerifyFileSignature(data->PePath);
 
 	PanoptesServiceClient client = PanoptesServiceClient();
-	if (!client.SendResults_Yara(data->PePath, data->FileHash, scanDataResults)) {
+	if (!client.SendResults_Yara(data->PePath, data->FileHash, scanDataResults, signature)) {
 		return false;
 	}
 

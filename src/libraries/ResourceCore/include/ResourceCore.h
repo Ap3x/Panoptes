@@ -30,10 +30,8 @@
 #define ERROR_STARTING_SERVICE          121
 #define ERROR_STOPPING_SERVICE          122
 #define CLEAN_HANDLE                    123
-#define EXT_SELECTED                    124
 #define NOT_ADMIN                       125
 #define NO_CONFIG                       126
-#define START_TRACE                     127
 #define GRPC_SERVER_ERROR               128
 #define EXT_INVALID                     129
 #define DEBUGGER                        130

@@ -1,0 +1,76 @@
+# Each step is an expr expression (https://expr-lang.org/docs/language-definition) over one
+# event, using the field names in pano.log. Missing fields are nil, so `Remote == true` is safe
+# on events that lack it. hasFlag(field, mask) tests bits in a number or a "0x..." hex string.
+#
+# Test against a log without the service:
+#   go run ./src -rules rules -replay C:\ProgramData\Panoptes\Logs\pano.log
+
+# Classic CreateRemoteThread injection: allocate RWX in another process, write it, start a thread
+- name: remote_thread_injection
+  description: Executable memory allocated and written in a remote process, then a thread started in it
+  severity: high
+  action: kill
+  target: PID            # kill the injector (the hooked process), not the victim
+  by: TargetProcessId
+  maxspan: 10s
+  sequence:
+    - Event == "ExecutableAllocated" && Remote == true
+    - Event == "PEWritten" && Remote == true
+    - Event == "RemoteThreadCreated"
+  until:
+    where: Event == "ProcessTerminated"
+    by: PID              # the victim exiting ends the sequence
+
+# Same, delivered with an APC instead of a new thread (early bird / APC injection)
+- name: remote_apc_injection
+  description: Executable memory allocated in a remote process, then an APC queued to it
+  severity: high
+  action: kill
+  target: PID
+  by: TargetProcessId
+  maxspan: 10s
+  sequence:
+    - Event == "ExecutableAllocated" && Remote == true
+    - Event == "ApcQueued" && Remote == true
+  until:
+    where: Event == "ProcessTerminated"
+    by: PID
+
+# Process hollowing: a suspended child gets a PE written into it shortly after being created.
+# Steps join on different fields: ProcessCreated names the child in PID, the hook event names
+# it in TargetProcessId.
+- name: process_hollowing
+  description: A PE image was written into a process shortly after it was created
+  severity: critical
+  action: kill
+  target: PID
+  maxspan: 5s
+  sequence:
+    - where: Event == "ProcessCreated"
+      by: PID
+    - where: Event == "PEWritten" && Remote == true
+      by: TargetProcessId
+
+# Single-event rule: RWX allocated with PAGE_EXECUTE_READWRITE (0x40) in another process
+- name: remote_rwx_allocation
+  description: PAGE_EXECUTE_READWRITE memory allocated in another process
+  severity: medium
+  action: alert
+  sequence:
+    - Event == "ExecutableAllocated" && Remote == true && hasFlag(Protection, 0x40)
+
+# Section (map view) injection: map an executable non-image view into a remote process, then
+# start it with a thread or an APC. Avoids NtWriteVirtualMemory entirely
+- name: mapped_section_injection
+  description: An executable view was mapped into a remote process, then a thread or APC started in it
+  severity: high
+  action: kill
+  target: PID
+  by: TargetProcessId
+  maxspan: 10s
+  sequence:
+    - Event == "RemoteViewMapped" && Remote == true && Executable == true && IsImage == false
+    - Event in ["RemoteThreadCreated", "ApcQueued"] && Remote == true
+  until:
+    where: Event == "ProcessTerminated"
+    by: PID

@@ -11,5 +11,7 @@ public:
 	BOOL AddEntry(std::string key, std::string entry);
 	std::string GetEntry(std::string hash);
 	ERRORCODE InitializeDatabase();
+	/// @brief Flushes and closes the database. Safe to call if it was never opened
+	static void CloseDatabase();
 	PanoptesDatabase();
 };

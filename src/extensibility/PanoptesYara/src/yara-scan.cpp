@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
+#include <memory>
 
 /// @brief Read a file to a buffer
 /// @param filename The path to the file to read
@@ -81,53 +82,33 @@ void matchingRule(const struct YRX_RULE* rule, void* user_data) {
 std::vector<string> YaraScanner::YaraScanFile(std::string file_path)
 {
 	std::vector<string> detectedRules;
-	YRX_RESULT result = YRX_SUCCESS;
-	YRX_SCANNER* scanner = nullptr;
 
 	if (g_yaraRules == nullptr) {
 		throw std::runtime_error("YARA rules not initialized");
 	}
 
-	try {
-		result = yrx_scanner_create(g_yaraRules, &scanner);
-		if (result != YRX_SUCCESS) {
-			throw std::runtime_error("Failed to create YARA scanner");
-		}
-
-		result = yrx_scanner_on_matching_rule(scanner, matchingRule, &detectedRules);
-		if (result != YRX_SUCCESS) {
-			if (scanner != nullptr) {
-				yrx_scanner_destroy(scanner);
-			}
-			throw std::runtime_error("Failed to set matching rule callback");
-		}
-
-		std::vector<uint8_t> scanBuffer = readFileToBuffer(file_path);
-		if (scanBuffer.empty()) {
-			if (scanner != nullptr) {
-				yrx_scanner_destroy(scanner);
-			}
-			throw std::runtime_error("Failed to read file for scanning");
-		}
-
-		result = yrx_scanner_scan(scanner, scanBuffer.data(), scanBuffer.size());
-		if (result != YRX_SUCCESS) {
-			if (scanner != nullptr) {
-				yrx_scanner_destroy(scanner);
-			}
-			throw std::runtime_error("Failed to scan file");
-		}
+	YRX_SCANNER* rawScanner = nullptr;
+	if (yrx_scanner_create(g_yaraRules, &rawScanner) != YRX_SUCCESS) {
+		throw std::runtime_error("Failed to create YARA scanner");
 	}
-	catch (...) {
-		if (scanner != nullptr) {
-			yrx_scanner_destroy(scanner);
-		}
-		throw; // Re-throw the exception after cleanup
+	// The only owner: destroyed exactly once, on every path out, including exceptions. Each
+	// error path used to destroy it and then throw into a catch that destroyed it again, a
+	// double free that crashed the container (RtlReportCriticalFailure, c0000374)
+	std::unique_ptr<YRX_SCANNER, decltype(&yrx_scanner_destroy)> scanner(rawScanner, yrx_scanner_destroy);
+
+	if (yrx_scanner_on_matching_rule(scanner.get(), matchingRule, &detectedRules) != YRX_SUCCESS) {
+		throw std::runtime_error("Failed to set matching rule callback");
 	}
 
-	// Clean up resources
-	if (scanner != nullptr) {
-		yrx_scanner_destroy(scanner);
+	std::vector<uint8_t> scanBuffer = readFileToBuffer(file_path);
+	if (scanBuffer.empty()) {
+		// The file could not be read (often deleted or locked between being queued and
+		// scanned), or it is empty, which no rule can match
+		throw std::runtime_error("Failed to read file for scanning: " + file_path);
+	}
+
+	if (yrx_scanner_scan(scanner.get(), scanBuffer.data(), scanBuffer.size()) != YRX_SUCCESS) {
+		throw std::runtime_error("Failed to scan file: " + file_path);
 	}
 
 	return detectedRules;

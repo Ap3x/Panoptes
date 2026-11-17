@@ -49,13 +49,11 @@ static bool g_LossStopping = false;
 static ULONG g_ReportedEventsLost = 0;
 static ULONG g_ReportedBuffersLost = 0;
 
-// time is when the event happened; the detector gets it at full resolution, since the log's
-// Time field only has whole seconds
-static void LogHookEvent(const nlohmann::ordered_json &event, const FILETIME &time)
+// time is when the event happened, which the detector gets as a FILETIME. RecordEvent appends
+// the event's Seq
+static void LogHookEvent(nlohmann::ordered_json &event, const FILETIME &time)
 {
-	std::string line = event.dump();
-	PublishDetectorEvent(event.value("Event", ""), line, time);
-	WriteToLogFile(line + "\n");
+	[[maybe_unused]] std::string line = RecordEvent(event, time);
 #ifdef _DEBUG
 	std::cout << line << std::endl;
 #endif
@@ -238,10 +236,15 @@ static void WINAPI OnHookEvent(PEVENT_RECORD record)
 		event[name] = PropertyToJson(property, data.data(), size);
 	}
 
-	// Name the process acted on when it is not the one the hook ran in
+	// Name the process acted on when it is not the one the hook ran in. TargetProcessId is 0 when
+	// the hook could not find out whose handle it was, even after re-opening it for query access.
+	// An attack on a target it hides is itself suspicious, so this is stated rather than left as
+	// a 0 rules might take for a real ID
 	if (event.value("Remote", false) && event.contains("TargetProcessId") && event["TargetProcessId"].is_number())
 	{
-		event["TargetImage"] = ResolveProcessImage(event["TargetProcessId"].get<DWORD>(), eventTime);
+		DWORD targetProcessId = event["TargetProcessId"].get<DWORD>();
+		event["TargetResolved"] = targetProcessId != 0;
+		event["TargetImage"] = targetProcessId != 0 ? ResolveProcessImage(targetProcessId, eventTime) : "";
 	}
 
 	LogHookEvent(event, eventTime);

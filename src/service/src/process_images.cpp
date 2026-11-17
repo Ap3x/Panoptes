@@ -128,6 +128,48 @@ std::string LookupProcessImage(DWORD processId, const FILETIME& time)
 	return "";
 }
 
+// The System process (PID 4), which the kernel's own registry and file activity is charged to.
+// It has no image file
+#define PANO_SYSTEM_PROCESS_ID 4
+
+// SystemProcessIdInformation (NtQuerySystemInformation class 0x58): a process's image name by ID,
+// with no handle needed
+#define PANO_SYSTEM_PROCESS_ID_INFORMATION_CLASS 0x58
+
+typedef struct _PANO_SYSTEM_PROCESS_ID_INFORMATION {
+	HANDLE ProcessId;
+	USHORT Length;        // the ImageName UNICODE_STRING, filled in by the kernel
+	USHORT MaximumLength;
+	PWSTR Buffer;
+} PANO_SYSTEM_PROCESS_ID_INFORMATION;
+
+typedef LONG(NTAPI* PanoNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
+
+// Names the processes QueryFullProcessImageName cannot: "System", and minimal processes such as
+// "Registry" and "MemCompression", which have a name but no image file. For any other process
+// it is the kernel's NT path (\Device\HarddiskVolume2\...). "" when the process is gone
+static std::string KernelProcessImage(DWORD processId)
+{
+	if (processId == PANO_SYSTEM_PROCESS_ID) {
+		return "System";
+	}
+
+	static PanoNtQuerySystemInformation query = (PanoNtQuerySystemInformation)GetProcAddress(
+		GetModuleHandleW(L"ntdll.dll"), "NtQuerySystemInformation");
+	if (query == nullptr) {
+		return "";
+	}
+	WCHAR name[MAX_PATH * 2];
+	PANO_SYSTEM_PROCESS_ID_INFORMATION info{};
+	info.ProcessId = (HANDLE)(ULONG_PTR)processId;
+	info.MaximumLength = sizeof(name);
+	info.Buffer = name;
+	if (query(PANO_SYSTEM_PROCESS_ID_INFORMATION_CLASS, &info, sizeof(info), nullptr) < 0) {
+		return "";
+	}
+	return ToString(std::wstring(name, info.Length / sizeof(WCHAR)));
+}
+
 std::string ResolveProcessImage(DWORD processId, const FILETIME& time)
 {
 	std::string image = LookupProcessImage(processId, time);
@@ -136,14 +178,16 @@ std::string ResolveProcessImage(DWORD processId, const FILETIME& time)
 	}
 
 	HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
-	if (process == NULL) {
-		return "";
+	if (process != NULL) {
+		WCHAR path[MAX_PATH * 2];
+		DWORD length = ARRAYSIZE(path);
+		if (QueryFullProcessImageNameW(process, 0, path, &length)) {
+			image = ToString(std::wstring(path, length));
+		}
+		CloseHandle(process);
 	}
-	WCHAR path[MAX_PATH * 2];
-	DWORD length = ARRAYSIZE(path);
-	if (QueryFullProcessImageNameW(process, 0, path, &length)) {
-		image = ToString(std::wstring(path, length));
+	if (image.empty()) {
+		image = KernelProcessImage(processId);
 	}
-	CloseHandle(process);
 	return image;
 }

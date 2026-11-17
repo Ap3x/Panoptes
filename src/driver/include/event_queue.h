@@ -102,6 +102,25 @@ NTSTATUS PanoReportRenameEvent(
 	_In_reads_opt_(DestinationNameLength) const WCHAR* DestinationName,
 	UINT32 DestinationNameLength);
 
+/// @brief Convenience wrapper that builds a PANO_REGISTRY_EVENT_DATA event. Every buffer must be
+/// kernel memory: the caller captures anything from user mode first. Data is cut to
+/// PANO_MAX_REGISTRY_DATA_SIZE bytes (PANO_FLAG_DATA_TRUNCATED is set). If the two names together
+/// exceed PANO_MAX_REGISTRY_NAMES_LENGTH they are truncated (the longer one first) and
+/// PANO_FLAG_NAME_TRUNCATED is set. Pass name lengths in WCHARs and DataLength in bytes.
+NTSTATUS PanoReportRegistryEvent(
+	PANO_EVENT_TYPE Type,
+	UINT64 ProcessId,
+	UINT64 ThreadId,
+	UINT32 Flags,
+	UINT32 Detail,
+	UINT32 DataSize,
+	_In_reads_opt_(KeyNameLength) const WCHAR* KeyName,
+	UINT32 KeyNameLength,
+	_In_reads_opt_(SecondNameLength) const WCHAR* SecondName,
+	UINT32 SecondNameLength,
+	_In_reads_bytes_opt_(DataLength) const void* Data,
+	UINT32 DataLength);
+
 /// @brief Convenience wrapper that builds a PANO_PROCESS_EVENT_DATA event. If the image name and
 /// command line together exceed PANO_MAX_PROCESS_STRINGS_LENGTH they are truncated (the longer one
 /// first) and PANO_FLAG_NAME_TRUNCATED / PANO_FLAG_COMMAND_LINE_TRUNCATED are set for whichever was

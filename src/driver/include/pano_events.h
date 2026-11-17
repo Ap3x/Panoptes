@@ -56,7 +56,7 @@ typedef struct _PANO_INJECTION_EXCLUSIONS {
 /// longest possible names fits whole (see the static_asserts at the end of this file), so names
 /// and command lines are never truncated in practice. Events are queued at their actual size,
 /// so this only sets the size of each GET_EVENT buffer
-#define PANO_MAX_EVENT_SIZE (132 * 1024)
+#define PANO_MAX_EVENT_SIZE (136 * 1024)
 
 /// @brief The most WCHARs a UNICODE_STRING can hold (its Length is a USHORT byte count)
 #define PANO_MAX_UNICODE_STRING_CHARS (0xFFFF / sizeof(WCHAR))
@@ -97,7 +97,40 @@ enum PANO_EVENT_TYPE : UINT32 {
 	PANO_EVENT_FILE_SECURITY_CHANGED,
 	/// @brief A file's extended attributes were written (a PANO_FILE_EVENT_DATA). Length holds
 	/// the size of the EA buffer that was set
-	PANO_EVENT_FILE_EA_CHANGED
+	PANO_EVENT_FILE_EA_CHANGED,
+	/// @brief A registry value is about to be written (a PANO_REGISTRY_EVENT_DATA). SecondName
+	/// is the value name, Detail the REG_* type, DataSize the size of the data and Data the
+	/// start of it. Sent before the write, so the write can still fail
+	PANO_EVENT_REGISTRY_SET_VALUE,
+	/// @brief A registry key is about to be saved to a file, e.g. reg save HKLM\SAM (a
+	/// PANO_REGISTRY_EVENT_DATA). SecondName is the file being written, Detail the REG_*_FORMAT.
+	/// Sent before the save, so it can still fail
+	PANO_EVENT_REGISTRY_SAVE_KEY,
+	/// @brief A registry key's security descriptor is about to be changed (a
+	/// PANO_REGISTRY_EVENT_DATA). Detail holds the SECURITY_INFORMATION flags saying which parts
+	/// change (owner, DACL, ...). Sent before the change, so it can still fail
+	PANO_EVENT_REGISTRY_SET_KEY_SECURITY,
+	/// @brief A registry key is about to be deleted (a PANO_REGISTRY_EVENT_DATA with only the key
+	/// name). Sent before the delete, so it can still fail
+	PANO_EVENT_REGISTRY_DELETE_KEY,
+	/// @brief A new registry key was created (a PANO_REGISTRY_EVENT_DATA with only the key name).
+	/// Opening an existing key through a create call is not reported
+	PANO_EVENT_REGISTRY_CREATE_KEY,
+	/// @brief A hive file was loaded into the registry, e.g. reg load (a PANO_REGISTRY_EVENT_DATA).
+	/// SecondName is the hive file, Detail the REG_* load flags
+	PANO_EVENT_REGISTRY_LOAD_KEY,
+	/// @brief A key's hive file was replaced, taking effect at the next boot, e.g. reg replace (a
+	/// PANO_REGISTRY_EVENT_DATA). SecondName is the new hive file and Data the file the old hive
+	/// was saved to, as WCHARs without a terminator
+	PANO_EVENT_REGISTRY_REPLACE_KEY,
+	/// @brief A registry key was renamed (a PANO_REGISTRY_EVENT_DATA). The key name is the old
+	/// full name and SecondName the new full name
+	PANO_EVENT_REGISTRY_RENAME_KEY,
+	/// @brief A value was read from a key holding credentials (under HKLM\SAM or HKLM\SECURITY)
+	/// (a PANO_REGISTRY_EVENT_DATA). SecondName is the value name and Detail the
+	/// KEY_VALUE_INFORMATION_CLASS. The value's data is never sent. Reads of other keys are too
+	/// frequent to report
+	PANO_EVENT_REGISTRY_QUERY_VALUE
 };
 
 /// @brief How long a handle can keep writing before its PANO_EVENT_FILE_MODIFIED is sent
@@ -163,6 +196,15 @@ typedef struct _PANO_EVENT_HEADER {
 /// @brief PANO_EVENT_FILE_MODIFIED: sent while the handle is still open and writing, so the
 /// file may not be complete yet
 #define PANO_FLAG_HANDLE_STILL_OPEN 0x40
+/// @brief PANO_EVENT_REGISTRY_SET_VALUE / _REPLACE_KEY: Data holds only the first
+/// PANO_MAX_REGISTRY_DATA_SIZE bytes; DataSize is the full size
+#define PANO_FLAG_DATA_TRUNCATED 0x80
+/// @brief Registry events: the operation came from kernel mode (a driver or the system) rather
+/// than from a user mode program
+#define PANO_FLAG_KERNEL_MODE_CALLER 0x100
+/// @brief Registry events: a name or the data could not be read, so the event is incomplete.
+/// The registry's own copy of the caller's buffer could not be read (it was freed or changed)
+#define PANO_FLAG_CAPTURE_FAILED 0x200
 
 /// @brief The data for file, named pipe and mailslot events
 typedef struct _PANO_FILE_EVENT_DATA {
@@ -253,7 +295,42 @@ typedef struct _PANO_PROCESS_EVENT_DATA {
 #define PANO_MAX_PROCESS_STRINGS_LENGTH \
 	((PANO_MAX_EVENT_SIZE - sizeof(PANO_EVENT_HEADER) - FIELD_OFFSET(PANO_PROCESS_EVENT_DATA, Strings)) / sizeof(WCHAR))
 
+/// @brief The most bytes of a value's data a PANO_EVENT_REGISTRY_SET_VALUE carries. Enough for
+/// the paths and command lines persistence writes; larger values are cut and flagged
+#define PANO_MAX_REGISTRY_DATA_SIZE 4096
+
+/// @brief The data for PANO_EVENT_REGISTRY_* events
+typedef struct _PANO_REGISTRY_EVENT_DATA {
+	UINT64 ProcessId;
+	UINT64 ThreadId;
+	/// @brief PANO_FLAG_* values
+	UINT32 Flags;
+	/// @brief Per event type: the REG_* value type (SET_VALUE), the REG_*_FORMAT (SAVE_KEY),
+	/// the SECURITY_INFORMATION flags (SET_KEY_SECURITY), the REG_* load flags (LOAD_KEY) or the
+	/// KEY_VALUE_INFORMATION_CLASS (QUERY_VALUE). 0 for the others
+	UINT32 Detail;
+	/// @brief The full size of Data in bytes before it was cut to fit: the value's data
+	/// (SET_VALUE) or the old hive file name (REPLACE_KEY). 0 for the others
+	UINT32 DataSize;
+	/// @brief Length of the key's full name (\REGISTRY\MACHINE\...) in WCHARs
+	UINT32 KeyNameLength;
+	/// @brief Length of the second name in WCHARs: the value name (SET_VALUE, QUERY_VALUE), the
+	/// file (SAVE_KEY, LOAD_KEY, REPLACE_KEY) or the new key name (RENAME_KEY). 0 for the others
+	UINT32 SecondNameLength;
+	/// @brief Bytes in Data, at most PANO_MAX_REGISTRY_DATA_SIZE. SET_VALUE and REPLACE_KEY only
+	UINT32 DataLength;
+	/// @brief The key name, then the second name (neither null terminated), then DataLength
+	/// bytes of data. The data is not aligned
+	WCHAR Strings[1];
+} PANO_REGISTRY_EVENT_DATA, * PPANO_REGISTRY_EVENT_DATA;
+
+/// @brief The maximum combined number of WCHARs in both PANO_REGISTRY_EVENT_DATA names so that
+/// the whole response, with the most data, fits in PANO_MAX_EVENT_SIZE
+#define PANO_MAX_REGISTRY_NAMES_LENGTH \
+	((PANO_MAX_EVENT_SIZE - sizeof(PANO_EVENT_HEADER) - FIELD_OFFSET(PANO_REGISTRY_EVENT_DATA, Strings) - PANO_MAX_REGISTRY_DATA_SIZE) / sizeof(WCHAR))
+
 static_assert(sizeof(PANO_EVENT_HEADER) == 24, "PANO_EVENT_HEADER layout changed");
+static_assert(FIELD_OFFSET(PANO_REGISTRY_EVENT_DATA, Strings) == 40, "PANO_REGISTRY_EVENT_DATA layout changed");
 static_assert(FIELD_OFFSET(PANO_FILE_EVENT_DATA, FileName) == 36, "PANO_FILE_EVENT_DATA layout changed");
 static_assert(FIELD_OFFSET(PANO_RENAME_EVENT_DATA, Names) == 28, "PANO_RENAME_EVENT_DATA layout changed");
 static_assert(FIELD_OFFSET(PANO_FILE_MODIFIED_EVENT_DATA, FileName) == 48, "PANO_FILE_MODIFIED_EVENT_DATA layout changed");
@@ -270,3 +347,5 @@ static_assert(PANO_MAX_RENAME_NAMES_LENGTH >= 2 * PANO_MAX_UNICODE_STRING_CHARS,
 	"PANO_MAX_EVENT_SIZE too small for two full-length rename names");
 static_assert(PANO_MAX_PROCESS_STRINGS_LENGTH >= 2 * PANO_MAX_UNICODE_STRING_CHARS,
 	"PANO_MAX_EVENT_SIZE too small for a full-length image name and command line");
+static_assert(PANO_MAX_REGISTRY_NAMES_LENGTH >= 2 * PANO_MAX_UNICODE_STRING_CHARS,
+	"PANO_MAX_EVENT_SIZE too small for a full-length key name, second name and data");

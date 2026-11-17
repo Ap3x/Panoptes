@@ -10,6 +10,7 @@ Each hook calls the real function first and only reports a successful call, unle
 |-----|---------------|-------|
 | `NtWriteVirtualMemory` | The buffer starts with the `MZ` magic bytes of a PE image. Reports whether the target is remote and whether the destination memory is executable. | `PEWritten` |
 | | The write overlaps the target's PEB page, e.g. process hollowing rewriting `ImageBaseAddress`. From x64 a WOW64 target's 32-bit PEB counts too. Reports the offset into the PEB. | `PEBWritten` |
+| | The write covers the first byte of the entry point code of the target's main image (the one `PEB.ImageBaseAddress` points at), or its `AddressOfEntryPoint` header field, e.g. entry point patching of a suspended process. The headers are read after the write, so a rewritten field reports the new entry point. Reports `EntryPoint`, `CodeWritten` and `FieldWritten`. Needs `PROCESS_VM_READ` on the handle. | `EntryPointWritten` |
 | `NtReadVirtualMemory` | The read overlaps the target's PEB page. Informational: debuggers and tools such as Task Manager read other processes' PEBs routinely. | `PEBRead` |
 | `NtProtectVirtualMemory` | Memory is made executable (`PAGE_EXECUTE`, `PAGE_EXECUTE_READ`, `PAGE_EXECUTE_READWRITE` or `PAGE_EXECUTE_WRITECOPY`, with any modifiers). Reports the old and new protection. | `PEMadeExecutable` |
 | `NtAllocateVirtualMemory`, `NtAllocateVirtualMemoryEx` | Memory is allocated with an executable protection. Reports the base and size the kernel returned. | `ExecutableAllocated` |
@@ -36,7 +37,8 @@ If a process loads more than one copy of the DLL from different folders (the hoo
 - `NtQueueApcThreadEx` is not hooked, so APCs queued through it directly are missed.
 - Executable allocations and protection changes in a process's own memory are common (JIT compilers in .NET and browsers), and `FreeLibrary` unmaps executable images, so local events are noisy. Remote events are the stronger signal.
 - `CreateProcess` writes to the new child's PEB, so every process launch produces a remote `PEBWritten`.
-- An APC queued through a remote thread handle without `THREAD_QUERY_LIMITED_INFORMATION` (all `QueueUserAPC` needs is `THREAD_SET_CONTEXT`) is reported with `TargetProcessId` 0, since the thread cannot be queried. Local handles like that are recognised by comparing the handle with each of the process's threads (`NtCompareObjects`, Windows 10 1607+) and are not reported.
+- Debuggers that break on a process's entry point write an `int3` there, which is reported as `EntryPointWritten`.
+- A handle can lack query access: all `QueueUserAPC` needs is `THREAD_SET_CONTEXT`, and a process can be written with only `PROCESS_VM_WRITE`. The hook then duplicates the handle with `THREAD_QUERY_LIMITED_INFORMATION` or `PROCESS_QUERY_LIMITED_INFORMATION` added. Windows checks that against the caller's token like an open, so it works whenever the caller could have opened the target for query itself. If that fails too, the event has `TargetProcessId` 0 (and `TargetThreadId` 0), and the service adds `TargetResolved: false`. Local thread handles without query access are recognised by comparing the handle with each of the process's threads (`NtCompareObjects`, Windows 10 1607+) and are not reported.
 
 ## Building
 

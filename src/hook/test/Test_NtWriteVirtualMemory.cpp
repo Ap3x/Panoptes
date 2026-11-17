@@ -48,6 +48,49 @@ static void RewriteInPlace(HANDLE process, BYTE* address, SIZE_T size) {
 #endif
 #define POINTER_SIZE_TEXT (sizeof(void*) == 8 ? "8" : "4")
 
+/// The read hook's report of the PEB.ImageBaseAddress read in RemoteMainImage
+#define REMOTE_IMAGE_BASE_READ (std::string("NtReadVirtualMemory: ") + POINTER_SIZE_TEXT + \
+	" bytes read from the PEB of the remote process at offset " PEB_IMAGE_BASE_OFFSET_TEXT)
+
+/// @brief A process's main image: its base, entry point and the address of the AddressOfEntryPoint
+/// header field.
+struct MainImage {
+	BYTE* Base;
+	BYTE* EntryPoint;
+	BYTE* EntryPointField;
+};
+
+/// @brief Finds the main image of a process from a base address, by reading its headers.
+static MainImage MainImageAt(HANDLE process, BYTE* base) {
+	auto read = NtdllFunction<NtReadWriteVirtualMemory_t>("NtReadVirtualMemory");
+	SIZE_T transferred;
+	IMAGE_DOS_HEADER dos{};
+	read(process, base, &dos, sizeof(dos), &transferred);
+	IMAGE_NT_HEADERS nt{};
+	read(process, base + dos.e_lfanew, &nt, sizeof(nt), &transferred);
+	return { base, base + nt.OptionalHeader.AddressOfEntryPoint,
+		base + dos.e_lfanew + offsetof(IMAGE_NT_HEADERS, OptionalHeader.AddressOfEntryPoint) };
+}
+
+/// @brief Finds a remote process's main image through PEB.ImageBaseAddress. The PEB read is
+/// reported by the read hook (REMOTE_IMAGE_BASE_READ).
+static MainImage RemoteMainImage(HANDLE process) {
+	BYTE* base = NULL;
+	SIZE_T transferred;
+	NtdllFunction<NtReadWriteVirtualMemory_t>("NtReadVirtualMemory")(
+		process, QueryPeb(process) + PEB_IMAGE_BASE_OFFSET, &base, sizeof(base), &transferred);
+	return MainImageAt(process, base);
+}
+
+/// @brief Makes Size bytes at Address writable with Protection, rewrites them in place and restores
+/// the old protection.
+static void RewriteProtected(HANDLE process, BYTE* address, SIZE_T size, DWORD protection) {
+	DWORD old;
+	VirtualProtectEx(process, address, size, protection, &old);
+	RewriteInPlace(process, address, size);
+	VirtualProtectEx(process, address, size, old, &old);
+}
+
 static const std::vector<HookTestCase> g_Cases = {
 	// PE image writes
 
@@ -256,6 +299,56 @@ static const std::vector<HookTestCase> g_Cases = {
 			CloseHandle(self);
 		},
 		{ "NtReadVirtualMemory: 1 bytes read from the PEB of the current process at offset 0x2" },
+	},
+
+	// Main image entry point writes. The code pages are made RWX for the write, which the protect
+	// hook reports; the header page is made RW, which it does not.
+
+	{
+		// Entry point patching: shellcode written over a suspended process's entry point
+		"Write to remote process entry point code",
+		[](HookTestContext& context) {
+			HANDLE remote = context.RemoteProcess();
+			RewriteProtected(remote, RemoteMainImage(remote).EntryPoint, 1, PAGE_EXECUTE_READWRITE);
+		},
+		{
+			REMOTE_IMAGE_BASE_READ,
+			"NtProtectVirtualMemory: PE image at * in the remote process made executable (0x20 -> 0x40)",
+			"NtWriteVirtualMemory: 1 bytes written over the main image's entry point code in the remote process, entry point *",
+			"NtProtectVirtualMemory: PE image at * in the remote process made executable (* -> 0x20)",
+		},
+	},
+	{
+		"Write to remote process AddressOfEntryPoint field",
+		[](HookTestContext& context) {
+			HANDLE remote = context.RemoteProcess();
+			RewriteProtected(remote, RemoteMainImage(remote).EntryPointField, sizeof(DWORD), PAGE_READWRITE);
+		},
+		{
+			REMOTE_IMAGE_BASE_READ,
+			"NtWriteVirtualMemory: 4 bytes written over the main image's AddressOfEntryPoint field in the remote process, entry point *",
+		},
+	},
+	{
+		"Write to current process entry point code",
+		[](HookTestContext&) {
+			MainImage image = MainImageAt(GetCurrentProcess(), (BYTE*)GetModuleHandle(NULL));
+			RewriteProtected(GetCurrentProcess(), image.EntryPoint, 1, PAGE_EXECUTE_READWRITE);
+		},
+		{
+			"NtProtectVirtualMemory: PE image at * in the current process made executable (0x20 -> 0x40)",
+			"NtWriteVirtualMemory: 1 bytes written over the main image's entry point code in the current process, entry point *",
+			"NtProtectVirtualMemory: PE image at * in the current process made executable (* -> 0x20)",
+		},
+	},
+	{
+		"Write elsewhere in the remote main image's headers is not reported",
+		[](HookTestContext& context) {
+			HANDLE remote = context.RemoteProcess();
+			// e_cblp, a field of the DOS header nothing reads
+			RewriteProtected(remote, RemoteMainImage(remote).Base + 2, 1, PAGE_READWRITE);
+		},
+		{ REMOTE_IMAGE_BASE_READ },
 	},
 };
 

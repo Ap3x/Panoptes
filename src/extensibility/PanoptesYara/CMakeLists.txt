@@ -136,12 +136,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${PRESET_NAME}"
 ) 
 
-# Add post-build command to copy DLL to ext directory for Debug configuration
+# Copy the DLL and PDB to bin/<config>/ext, where the container loads modules from (PanoptesML
+# builds straight into it), so every configuration runs and packages the same way
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND "$<$<CONFIG:Debug>:${CMAKE_COMMAND};-E;make_directory;${CMAKE_SOURCE_DIR}/bin/Debug/ext>"
-    COMMAND "$<$<CONFIG:Debug>:${CMAKE_COMMAND};-E;copy_if_different;$<TARGET_FILE:${PROJECT_NAME}>;${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_FILE_NAME:${PROJECT_NAME}>>"
-    COMMAND "$<$<CONFIG:Debug>:${CMAKE_COMMAND};-E;copy_if_different;$<TARGET_PDB_FILE:${PROJECT_NAME}>;${CMAKE_SOURCE_DIR}/bin/Debug/ext/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>>"
-    COMMAND_EXPAND_LISTS
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/ext"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/ext/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${CMAKE_SOURCE_DIR}/bin/$<CONFIG>/ext/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
     COMMENT "Copying ${PROJECT_NAME} DLL and PDB to ext directory"
 )
 

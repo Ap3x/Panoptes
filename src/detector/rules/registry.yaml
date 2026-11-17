@@ -1,0 +1,271 @@
+# Rules on registry events from the driver's registry callback. See injection.yaml for the rule
+# syntax.
+#
+# Fields: Key is the full key name with HKLM\ or HKU\<SID>\ in front. There is no HKCU: a user's
+# keys are under HKU\<SID>\, and their Software\Classes keys under HKU\<SID>_Classes\. Keys under
+# CurrentControlSet are reported under the control set they point to (ControlSet001). Image is
+# the DOS path of the process that made the change ("" when unknown). RegistrySetValue has
+# ValueName (empty for a key's default value), Type, DataHex (the bytes written, as hex) and Data:
+# text for string types, a number for DWORD and QWORD, a list for REG_MULTI_SZ. Data is missing
+# for other types (REG_BINARY, ...) and for a DWORD or QWORD written with too few bytes.
+#
+# Regular expressions are written as `raw strings`, so \\ matches one backslash. Keys are matched
+# lowercased.
+#
+# SetValue, DeleteKey and SetKeySecurity are reported before the change is made, so the write may
+# still have failed (e.g. access denied). All rules alert: the registry change has already been
+# made by the time the service could act, and killing the writer does not undo it.
+
+# Programs started at every logon or boot through the Run keys
+- name: registry_run_key_persistence
+  description: A program was added to a Run or RunOnce key, so it starts at every logon
+  severity: medium
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `\\software\\(wow6432node\\)?microsoft\\windows\\currentversion\\(run|runonce|runservices|runservicesonce|policies\\explorer\\run)$` &&
+      Data != "" &&
+      !(lower(Image) == "c:\\program files (x86)\\microsoft\\edge\\application\\msedge.exe" &&
+        ValueName startsWith "MicrosoftEdgeAutoLaunch_" &&
+        lower(Data) startsWith "\"c:\\program files (x86)\\microsoft\\edge\\application\\msedge.exe\"") &&
+      !(lower(Image) matches `^c:\\program files \(x86\)\\microsoft\\(edge|copilot)\\application\\[0-9.]+\\installer\\setup\.exe$` &&
+        ValueName startsWith "msedge_cleanup_" &&
+        lower(Data) startsWith "\"" + lower(Image) + "\"")
+
+# Winlogon starts Shell and Userinit at logon. Anything other than their defaults runs as the user
+# at every logon, before Explorer
+- name: registry_winlogon_persistence
+  description: A Winlogon Shell, Userinit, Taskman or AppSetup value was changed
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `\\software\\(wow6432node\\)?microsoft\\windows nt\\currentversion\\winlogon$` && (
+        (lower(ValueName) == "shell" && lower(Data) != "explorer.exe") ||
+        (lower(ValueName) == "userinit" && !(lower(Data) in ["c:\\windows\\system32\\userinit.exe,", "c:\\windows\\system32\\userinit.exe"])) ||
+        lower(ValueName) in ["taskman", "appsetup"])
+
+# An IFEO Debugger value runs the given program instead of the target whenever the target starts
+# (e.g. sethc.exe replaced by cmd.exe for a logon-screen backdoor). VerifierDlls loads a DLL into it
+- name: registry_ifeo_debugger
+  description: An Image File Execution Options Debugger or VerifierDlls value was set
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `\\image file execution options\\[^\\]+$` &&
+      lower(ValueName) in ["debugger", "verifierdlls"] &&
+      Data != ""
+
+# Silent process exit monitoring starts MonitorProcess whenever the target exits. It needs the
+# FLG_MONITOR_SILENT_PROCESS_EXIT (0x200) GlobalFlag set in the target's IFEO key
+- name: registry_silent_process_exit
+  description: Silent process exit monitoring was set up, which runs a program when another exits
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" && (
+        (lower(Key) matches `\\silentprocessexit\\[^\\]+$` && lower(ValueName) == "monitorprocess" && Data != "") ||
+        (lower(Key) matches `\\image file execution options\\[^\\]+$` && lower(ValueName) == "globalflag" && hasFlag(Data, 0x200)))
+
+# AppInit_DLLs are loaded into every process that loads user32.dll, and AppCertDlls into every
+# process that calls CreateProcess
+- name: registry_appinit_dlls
+  description: AppInit_DLLs or AppCertDlls was set, loading a DLL into most processes
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" && (
+        (lower(Key) matches `\\software\\(wow6432node\\)?microsoft\\windows nt\\currentversion\\windows$` && (
+          (lower(ValueName) == "appinit_dlls" && Data != "") ||
+          (lower(ValueName) == "loadappinit_dlls" && Data == 1))) ||
+        lower(Key) matches `\\control\\session manager\\appcertdlls$`)
+
+# A per-user COM server overrides the machine one, so a program that creates the COM object loads
+# the attacker's DLL or EXE instead. Some per-user installs (OneDrive, Teams) register COM servers
+# the same way, so this is medium
+- name: registry_com_hijack
+  description: A COM server was registered for one user, which overrides the machine-wide one
+  severity: medium
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `^hku\\[^\\]+(_classes|\\software\\classes)\\(wow6432node\\)?clsid\\[^\\]+\\(inprocserver32|localserver32)$` &&
+      ValueName == "" &&
+      Data != ""
+
+# UAC bypasses (fodhelper, computerdefaults, eventvwr, sdclt) point a per-user shell\open\command
+# at a payload, then start an auto-elevating program that runs it with high integrity
+- name: registry_uac_bypass
+  description: A per-user shell open command used by known UAC bypasses was set
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `^hku\\[^\\]+(_classes|\\software\\classes)\\(ms-settings|mscfile|exefile|folder|launcher\.systemsettings)\\shell\\open\\command$` &&
+      (ValueName == "" || lower(ValueName) == "delegateexecute")
+
+# Security, authentication and notification packages are DLLs that lsass.exe loads, which gives
+# them every password it handles
+- name: registry_lsa_package_added
+  description: An LSA security, authentication or notification package list was changed
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `^hklm\\system\\(currentcontrolset|controlset\d+)\\control\\lsa(\\osconfig)?$` &&
+      lower(ValueName) in ["security packages", "authentication packages", "notification packages"]
+
+# Turning off LSA protection lets tools open lsass.exe and read its memory. Turning off restricted
+# admin allows pass-the-hash over RDP
+- name: registry_lsa_protection_weakened
+  description: LSA protection (RunAsPPL) or the RDP restricted admin restriction was turned off
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `^hklm\\system\\(currentcontrolset|controlset\d+)\\control\\lsa$` && (
+        (lower(ValueName) == "runasppl" && Data == 0) ||
+        (lower(ValueName) == "disablerestrictedadmin" && Data == 0))
+
+# With UseLogonCredential set, WDigest keeps plaintext passwords in lsass.exe memory
+- name: registry_wdigest_enabled
+  description: WDigest was set to keep plaintext passwords in memory
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `\\control\\securityproviders\\wdigest$` &&
+      lower(ValueName) == "uselogoncredential" && Data == 1
+
+# Defender is turned off through its policy keys (what Group Policy writes) or its own settings
+- name: registry_defender_disabled
+  description: A Microsoft Defender protection was turned off in the registry
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `^hklm\\software\\(policies\\)?microsoft\\windows defender(\\|$)` &&
+      lower(ValueName) in ["disableantispyware", "disableantivirus", "disablerealtimemonitoring",
+        "disablebehaviormonitoring", "disableioavprotection", "disableonaccessprotection",
+        "disablescriptscanning", "disableblockatfirstseen"] &&
+      Data == 1
+
+# Malware adds itself to the Defender exclusions so it is never scanned. Administrators add
+# exclusions too, so this is medium
+- name: registry_defender_exclusion_added
+  description: A path, extension, process or address was added to the Microsoft Defender exclusions
+  severity: medium
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `^hklm\\software\\(policies\\)?microsoft\\windows defender\\exclusions\\(paths|extensions|processes|ipaddresses)$`
+
+# Services are normally installed through the Service Control Manager, which is services.exe
+# writing the key. Writing ImagePath or ServiceDll directly skips the SCM and its event log entry
+- name: registry_service_written_directly
+  description: A service's ImagePath or ServiceDll was written by a process other than the Service Control Manager
+  severity: medium
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      KernelMode != true &&
+      !(lower(Image) endsWith "\\services.exe") && (
+        (lower(Key) matches `^hklm\\system\\(currentcontrolset|controlset\d+)\\services\\[^\\]+$` && lower(ValueName) == "imagepath") ||
+        (lower(Key) matches `^hklm\\system\\(currentcontrolset|controlset\d+)\\services\\[^\\]+\\parameters$` && lower(ValueName) == "servicedll"))
+
+# Start = 4 disables a service from the next boot. Done to security services, it switches off
+# protection without stopping anything now
+- name: registry_security_service_disabled
+  description: A security or logging service was set to disabled
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetValue" &&
+      lower(Key) matches `^hklm\\system\\(currentcontrolset|controlset\d+)\\services\\(windefend|wdboot|wdfilter|wdnisdrv|wdnissvc|sense|eventlog|sysmon[^\\]*|panoptes[^\\]*)$` &&
+      lower(ValueName) == "start" && Data == 4
+
+# Changes to Panoptes's own service keys, other than by the Service Control Manager. Setting Start,
+# ImagePath or deleting the key would switch Panoptes off at the next boot
+- name: registry_panoptes_tampered
+  description: The Panoptes service registry keys were changed by another process
+  severity: critical
+  action: alert
+  sequence:
+    - >-
+      Event in ["RegistrySetValue", "RegistryDeleteKey", "RegistrySetKeySecurity", "RegistryRenameKey"] &&
+      KernelMode != true &&
+      !(lower(Image) endsWith "\\services.exe") &&
+      lower(Key) matches `^hklm\\system\\(currentcontrolset|controlset\d+)\\services\\panoptes[^\\]*(\\|$)`
+
+# reg save of the SAM, SECURITY or SYSTEM hive copies password hashes and LSA secrets, and the
+# SYSTEM hive holds the key that decrypts them, to be cracked offline
+- name: registry_credential_hive_saved
+  description: The SAM, SECURITY or SYSTEM hive was saved to a file
+  severity: critical
+  action: alert
+  sequence:
+    - Event == "RegistrySaveKey" && lower(Key) matches `^hklm\\(sam|security|system)$`
+
+# Reading account hashes, LSA secrets or cached domain logons straight from the registry. lsass.exe
+# reads them all the time; nothing else should
+- name: registry_credential_read
+  description: Password hashes, LSA secrets or cached logons were read from the registry by a process other than lsass.exe
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistryQueryValue" &&
+      KernelMode != true &&
+      PID != 4 &&
+      !(lower(Image) endsWith "\\lsass.exe") &&
+      lower(Key) matches `^hklm\\(sam\\sam\\domains\\account(\\users\\[^\\]+)?|security\\policy\\secrets\\[^\\]+(\\[^\\]+)?|security\\cache)$`
+
+# Loading a file named SAM, SECURITY or SYSTEM as a hive is how a saved or copied credential hive
+# is read back. User profiles (NTUSER.DAT, UsrClass.dat) are loaded at every logon and are not
+# matched
+- name: registry_credential_hive_loaded
+  description: A copy of the SAM, SECURITY or SYSTEM hive was loaded into the registry
+  severity: high
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistryLoadKey" &&
+      lower(Path) matches `\\(sam|security|system)(\.[a-z0-9]+)?$`
+
+# reg replace swaps a hive for one prepared offline at the next boot. Almost nothing does this
+- name: registry_hive_replaced
+  description: A registry hive was set to be replaced with another file at the next boot
+  severity: medium
+  action: alert
+  sequence:
+    - Event == "RegistryReplaceKey"
+
+# Changing the owner or permissions of an autostart key stops administrators and security tools
+# from reading or removing what was put there
+- name: registry_persistence_key_permissions_changed
+  description: The owner or permissions of a Run, IFEO, Winlogon or service key were changed
+  severity: medium
+  action: alert
+  sequence:
+    - >-
+      Event == "RegistrySetKeySecurity" &&
+      KernelMode != true &&
+      !(lower(Image) endsWith "\\services.exe") &&
+      ("Dacl" in Changed || "Owner" in Changed) &&
+      !(lower(Image) matches `^c:\\programdata\\microsoft\\windows defender\\platform\\[^\\]+\\msmpeng\.exe$`) &&
+      lower(Key) matches `(\\software\\(wow6432node\\)?microsoft\\windows\\currentversion\\(run|runonce)|\\image file execution options\\[^\\]+|\\microsoft\\windows nt\\currentversion\\winlogon|^hklm\\system\\(currentcontrolset|controlset\d+)\\services\\[^\\]+)$`

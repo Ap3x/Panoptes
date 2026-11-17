@@ -14,7 +14,7 @@ import (
 )
 
 // Same layout and zone (UTC) as the Time field the service writes to pano.log
-const logTimeLayout = "2006/01/02 15:04:05"
+const logTimeLayout = "2006/01/02 15:04:05.000"
 
 // defaultDetectionLog is %ProgramData%\Panoptes\Logs\detection.log, next to pano.log.
 func defaultDetectionLog() string {
@@ -115,10 +115,11 @@ func (l *detectionLog) open() error {
 	}
 }
 
-// Write appends the detection. reported says whether the service accepted it; replay mode,
-// which has no service, passes nil and the field is left out.
-func (l *detectionLog) Write(m engine.Match, now time.Time, reported *bool) error {
-	rec := summary(m)
+// Write appends the detection. image is the target process's image (see detectionImage).
+// reported says whether the service accepted it; replay mode, which has no service, passes
+// nil and the field is left out.
+func (l *detectionLog) Write(m engine.Match, image string, now time.Time, reported *bool) error {
+	rec := summary(m, image)
 	rec["Time"] = now.UTC().Format(logTimeLayout)
 	if reported != nil {
 		rec["Reported"] = *reported

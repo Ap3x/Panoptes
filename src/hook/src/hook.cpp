@@ -2,6 +2,7 @@
 #include "hook_trace.hpp"
 #include "detours\detours.h"
 #include "winternl.h"
+#include <stddef.h> // offsetof
 
 #pragma region Hooked Functions
 
@@ -256,6 +257,77 @@ static BOOL RangeTouchesPEB(HANDLE ProcessHandle, PVOID Address, SIZE_T Size, UL
 	return FALSE;
 }
 
+/// @brief Checks whether two address ranges overlap. A range's end is clamped at the top of the
+/// address space rather than wrapping.
+static BOOL RangesOverlap(ULONG_PTR Start, SIZE_T Size, ULONG_PTR OtherStart, SIZE_T OtherSize)
+{
+	const ULONG_PTR end = (Size > MAXULONG_PTR - Start) ? MAXULONG_PTR : Start + Size;
+	const ULONG_PTR otherEnd = (OtherSize > MAXULONG_PTR - OtherStart) ? MAXULONG_PTR : OtherStart + OtherSize;
+	return Start < otherEnd && end > OtherStart;
+}
+
+/// @brief Reads memory from a process through the original NtReadVirtualMemory, so reads made by
+/// a hook are not themselves reported as PEB reads.
+/// @return TRUE if all Size bytes were read.
+static BOOL ReadTargetMemory(HANDLE ProcessHandle, ULONG_PTR Address, PVOID Buffer, SIZE_T Size)
+{
+	SIZE_T read = 0;
+	return pOriginal_NtReadVirtualMemory != NULL &&
+		   NT_SUCCESS(pOriginal_NtReadVirtualMemory(ProcessHandle, (PVOID)Address, Buffer, Size, &read)) &&
+		   read == Size;
+}
+
+/// The offset of the AddressOfEntryPoint field from the start of the NT headers. It is the same
+/// in IMAGE_NT_HEADERS32 and IMAGE_NT_HEADERS64.
+#define PANO_ENTRY_POINT_FIELD_OFFSET offsetof(IMAGE_NT_HEADERS32, OptionalHeader.AddressOfEntryPoint)
+
+/// @brief Finds the entry point of a process's main image, from PEB.ImageBaseAddress and the
+/// image's headers. From a WOW64 caller the PEB is the 32-bit one, whose layout matches this
+/// build; both PEBs of a WOW64 target point at the same main image.
+/// @param ProcessHandle The process. Needs PROCESS_VM_READ (and PROCESS_QUERY_LIMITED_INFORMATION
+/// unless it is the current-process pseudo-handle); without them nothing is found.
+/// @param EntryPoint Receives the entry point address, or 0 if AddressOfEntryPoint is 0.
+/// @param EntryPointField Receives the address of the AddressOfEntryPoint header field.
+/// @return TRUE if the main image's headers were read and are valid.
+static BOOL GetMainImageEntryPoint(HANDLE ProcessHandle, ULONG_PTR *EntryPoint, ULONG_PTR *EntryPointField)
+{
+	ULONG_PTR pebs[2];
+	GetPebAddresses(ProcessHandle, pebs);
+	if (pebs[0] == 0)
+	{
+		return FALSE;
+	}
+
+	// PEB.ImageBaseAddress follows the first pointer-sized slot of Reserved3
+	ULONG_PTR imageBase = 0;
+	if (!ReadTargetMemory(ProcessHandle, pebs[0] + offsetof(PEB, Reserved3) + sizeof(PVOID), &imageBase, sizeof(imageBase)) ||
+		imageBase == 0)
+	{
+		return FALSE;
+	}
+
+	IMAGE_DOS_HEADER dos{};
+	if (!ReadTargetMemory(ProcessHandle, imageBase, &dos, sizeof(dos)) || dos.e_magic != IMAGE_DOS_SIGNATURE ||
+		dos.e_lfanew <= 0)
+	{
+		return FALSE;
+	}
+
+	// Only the fields up to and including AddressOfEntryPoint are read
+	const ULONG_PTR ntHeaders = imageBase + (ULONG_PTR)dos.e_lfanew;
+	IMAGE_NT_HEADERS32 nt{};
+	if (!ReadTargetMemory(ProcessHandle, ntHeaders, &nt, PANO_ENTRY_POINT_FIELD_OFFSET + sizeof(DWORD)) ||
+		nt.Signature != IMAGE_NT_SIGNATURE ||
+		(nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC && nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))
+	{
+		return FALSE;
+	}
+
+	*EntryPoint = (nt.OptionalHeader.AddressOfEntryPoint != 0) ? imageBase + nt.OptionalHeader.AddressOfEntryPoint : 0;
+	*EntryPointField = ntHeaders + PANO_ENTRY_POINT_FIELD_OFFSET;
+	return TRUE;
+}
+
 /// @brief The Hooked_NtWriteVirtualMemory function is a function that hooks the
 /// NtWriteVirtualMemory function.
 /// @param ProcessHandle The handle to the process.
@@ -282,7 +354,25 @@ NTSTATUS NTAPI Hooked_NtWriteVirtualMemory(
 	ULONG_PTR pebOffset = 0;
 	if (RangeTouchesPEB(ProcessHandle, BaseAddress, NumberOfBytesToWrite, &pebOffset))
 	{
+		
 		Log_PEBWritten(ProcessHandle, currentProcess, NumberOfBytesToWrite, pebOffset);
+	}
+
+	// Checked after the write, so a write that replaces AddressOfEntryPoint reports the new entry
+	// point. Patching the first byte of the entry point code, or redirecting the field, makes the
+	// process run injected code when its main thread starts.
+	ULONG_PTR entryPoint = 0;
+	ULONG_PTR entryPointField = 0;
+	if (GetMainImageEntryPoint(ProcessHandle, &entryPoint, &entryPointField))
+	{
+		const BOOL codeWritten = entryPoint != 0 &&
+								 RangesOverlap((ULONG_PTR)BaseAddress, NumberOfBytesToWrite, entryPoint, 1);
+		const BOOL fieldWritten = RangesOverlap((ULONG_PTR)BaseAddress, NumberOfBytesToWrite, entryPointField, sizeof(DWORD));
+		if (codeWritten || fieldWritten)
+		{
+			Log_EntryPointWritten(ProcessHandle, currentProcess, BaseAddress, NumberOfBytesToWrite,
+								  (PVOID)entryPoint, codeWritten, fieldWritten);
+		}
 	}
 
 	if (ContainsDOSSignature((const BYTE *)Buffer, NumberOfBytesToWrite))
@@ -737,6 +827,7 @@ static HOOK_ENTRY g_Hooks[] = {
 	{"NtQueueApcThread", (PVOID *)&pOriginal_NtQueueApcThread, (PVOID)Hooked_NtQueueApcThread},
 	{"NtQueueApcThreadEx2", (PVOID *)&pOriginal_NtQueueApcThreadEx2, (PVOID)Hooked_NtQueueApcThreadEx2},
 	{"NtSetInformationProcess", (PVOID *)&pOriginal_NtSetInformationProcess, (PVOID)Hooked_NtSetInformationProcess},
+	
 };
 
 #pragma region Logging control

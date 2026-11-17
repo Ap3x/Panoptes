@@ -28,7 +28,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Static
 from proc_window import analyze, descendants, fmt
 
 SORTS = ["tree", "start", "events", "image", "pid"]
-SKIP = {"Event", "PID", "TID", "Time"}
+SKIP = {"Event", "PID", "TID", "Time", "Seq"}
 
 
 def duration(p):

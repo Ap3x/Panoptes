@@ -627,3 +627,69 @@ NTSTATUS PanoReportProcessEvent(
 	SubmitEventNode(node);
 	return STATUS_SUCCESS;
 }
+
+NTSTATUS PanoReportRegistryEvent(
+	PANO_EVENT_TYPE Type,
+	UINT64 ProcessId,
+	UINT64 ThreadId,
+	UINT32 Flags,
+	UINT32 Detail,
+	UINT32 DataSize,
+	const WCHAR* KeyName,
+	UINT32 KeyNameLength,
+	const WCHAR* SecondName,
+	UINT32 SecondNameLength,
+	const void* Data,
+	UINT32 DataLength)
+{
+	if (KeyName == NULL) {
+		KeyNameLength = 0;
+	}
+	if (SecondName == NULL) {
+		SecondNameLength = 0;
+	}
+	if (Data == NULL) {
+		DataLength = 0;
+	}
+	if (DataLength > PANO_MAX_REGISTRY_DATA_SIZE) {
+		DataLength = PANO_MAX_REGISTRY_DATA_SIZE;
+		Flags |= PANO_FLAG_DATA_TRUNCATED;
+	}
+
+	BOOLEAN keyCut, secondCut;
+	FitTwoStrings(&KeyNameLength, &SecondNameLength, (UINT32)PANO_MAX_REGISTRY_NAMES_LENGTH, &keyCut, &secondCut);
+	if (keyCut || secondCut) {
+		Flags |= PANO_FLAG_NAME_TRUNCATED;
+	}
+
+	UINT32 payloadSize = (UINT32)FIELD_OFFSET(PANO_REGISTRY_EVENT_DATA, Strings) +
+		(KeyNameLength + SecondNameLength) * (UINT32)sizeof(WCHAR) + DataLength;
+
+	void* dest;
+	PPANO_EVENT_NODE node = AllocEventNode(Type, payloadSize, &dest);
+	if (node == NULL) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	PPANO_REGISTRY_EVENT_DATA data = (PPANO_REGISTRY_EVENT_DATA)dest;
+	data->ProcessId = ProcessId;
+	data->ThreadId = ThreadId;
+	data->Flags = Flags;
+	data->Detail = Detail;
+	data->DataSize = DataSize;
+	data->KeyNameLength = KeyNameLength;
+	data->SecondNameLength = SecondNameLength;
+	data->DataLength = DataLength;
+	if (KeyNameLength != 0) {
+		RtlCopyMemory(data->Strings, KeyName, KeyNameLength * sizeof(WCHAR));
+	}
+	if (SecondNameLength != 0) {
+		RtlCopyMemory(data->Strings + KeyNameLength, SecondName, SecondNameLength * sizeof(WCHAR));
+	}
+	if (DataLength != 0) {
+		RtlCopyMemory(data->Strings + KeyNameLength + SecondNameLength, Data, DataLength);
+	}
+
+	SubmitEventNode(node);
+	return STATUS_SUCCESS;
+}

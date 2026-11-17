@@ -10,6 +10,7 @@
 enum ExtensibilityType {
 	EXTENSIBILITY_TYPE_NOT_SET = 0,
 	EXTENSIBILITY_TYPE_YARA = 30,
+	EXTENSIBILITY_TYPE_ML = 31,
 };
 
 /// @brief The information about the file to be scanned that passed between the container, 

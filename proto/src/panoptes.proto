@@ -6,6 +6,7 @@ option go_package = "github.com/Ap3x/Panoptes/detector/src/pb;pb";
 enum ContainerType {
   CONTAINER_TYPE_NONE = 0;
   CONTAINER_TYPE_YARA = 30;
+  CONTAINER_TYPE_ML = 31;
 }
 
 enum AckType {
@@ -16,6 +17,12 @@ enum AckType {
 message AckMessage {
 	AckType ack_type = 1;
 	string message = 2;
+	// QueuePeScan: the results still expected for the file, by their key in the stored result
+	// ("yara_scan", "ml_scan"). Empty once every running extension has reported
+	repeated string pending_scans = 3;
+	// QueuePeScan: the hash the file's result is stored under, to poll with (the file may be gone
+	// by then: quarantined)
+	string file_hash = 4;
 }
 
 message ScanSignature {
@@ -31,11 +38,23 @@ message ScanYara {
 	ScanSignature signature = 2;
 }
 
+// A static PE scored by PanoptesML's ONNX model
+message ScanML {
+	float score = 1;          // the model's malicious probability, 0 to 1
+	float threshold = 2;      // score at or above which the file counts as malicious
+	bool malicious = 3;
+	string model = 4;         // the model file's name
+	uint32 feature_version = 5; // layout of the feature vector the model was given
+	bool is_pe = 6;           // false: not a PE file, so not scored (the model is trained on PEs)
+	string error = 7;         // set when the file wasn't scored: why. score and malicious are then 0
+}
+
 message ContainerReply {
 	string portable_executable_path = 1;
 	string file_hash = 2;
 	oneof container_event_reply {
 		ScanYara yara_scan = 5;
+		ScanML ml_scan = 6;
 	}
 }
 
@@ -47,6 +66,9 @@ message ContainerInfo {
 message PeScanInfo {
 	string portable_executable_path = 1;
 	string file_hash = 2;
+	// QueuePeScan: only report the stored result and the scans still running, for a scanner
+	// waiting on them. Starts no scan and shows no notification
+	bool poll = 3;
 }
 
 message HealthCheckRequest {
@@ -68,10 +90,11 @@ message DetectorHello {
 
 // One event, as the service logs it
 message DetectorEvent {
-	// Increments by one per event the service sends; a gap means the stream dropped events
+	// The event's "Seq" in pano.log. Increments by one per logged event; a gap means the stream
+	// dropped events
 	uint64 sequence = 1;
-	// FILETIME (100ns intervals since 1601-01-01 UTC). The log's "Time" field only has
-	// one-second resolution, which is too coarse for maxspan windows.
+	// FILETIME (100ns intervals since 1601-01-01 UTC). Finer than the log's "Time" field,
+	// which has milliseconds
 	int64 timestamp = 2;
 	// The same JSON object written to pano.log, so rules use the log's field names and
 	// can be tested offline by replaying a log file
@@ -98,7 +121,7 @@ message Detection {
 	DetectionAction action = 4;
 	uint32 process_id = 5;           // process to act on
 	string image_path = 6;
-	repeated uint64 event_sequences = 7; // DetectorEvent.sequence of each event that matched
+	repeated uint64 event_sequences = 7; // Seq of each event that matched, naming its line in pano.log
 	// FILETIME of the last matching event. process_id must have existed by then: the service
 	// refuses to act on a process created later, since its ID was reused after the match
 	int64 timestamp = 8;

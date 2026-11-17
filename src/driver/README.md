@@ -9,10 +9,10 @@ The driver watches the system from the kernel and injects the [hook DLL](../hook
 | Process notify (`ProcessCreateCallback`) | `PsSetCreateProcessNotifyRoutineEx` | Reports process creation (process ID, parent process ID, creating process and thread, image path and command line) and termination. Tracks each new process's architecture and whether it is protected, for injection. |
 | Image load notify (`LoadImageNotifyRoutine`) | `PsSetLoadImageNotifyRoutine` | Drives the hook DLL injection (below). Driver loads are not reported. |
 | File system minifilter (`pano_filter.cpp`) | `FltRegisterFilter` / `FltStartFiltering` | Pre- and post-operation callbacks on file system I/O (below). |
+| Registry callback (`RegistryCallbackFunction`) | `CmRegisterCallback` | Reports registry changes used for persistence, credential theft and defense evasion (below). Never blocks an operation. |
 
 Planned callbacks:
 - `ObRegisterCallbacks`: process, thread and desktop handle operations
-- `CmRegisterCallbackEx`: registry modifications
 - `PsSetCreateThreadNotifyRoutine`: thread creation
 
 ### Minifilter
@@ -28,6 +28,26 @@ Planned callbacks:
 | `IRP_MJ_SET_EA` | Extended attributes written |
 
 Each group of events can be turned off with the `FileEvents` setting (see the [service README](../service/README.md#configuration)). A group that is off is dropped at the start of its callbacks.
+
+### Registry callback
+
+| Notification | Event | Details |
+|--------------|-------|---------|
+| `RegNtPreSetValueKey` | `RegistrySetValue` | Key, value name, type, and the data (up to 4 KB; longer data is truncated and flagged) |
+| `RegNtPreDeleteKey` | `RegistryDeleteKey` | Key |
+| `RegNtPreSetKeySecurity` | `RegistrySetKeySecurity` | Key and which parts of its security descriptor were set |
+| `RegNtPreSaveKey` | `RegistrySaveKey` | Key and the file it is saved to (e.g. `reg save HKLM\SAM`) |
+| `RegNtPostCreateKeyEx` | `RegistryCreateKey` | Key; only keys that did not exist before, not opens of existing keys |
+| `RegNtPostLoadKey` | `RegistryLoadKey` | Key the hive was loaded under, the hive file and the load flags |
+| `RegNtPostReplaceKey` | `RegistryReplaceKey` | Key, the new hive file and the file the old hive was moved to |
+| `RegNtPreRenameKey` / `RegNtPostRenameKey` | `RegistryRenameKey` | Old and new key names. The pre callback saves the old name for the post callback, since the key has been renamed by then |
+| `RegNtPostQueryValueKey` | `RegistryQueryValue` | Only for keys under `HKLM\SAM` and `HKLM\SECURITY`, which hold credentials. The value's data is never sent |
+
+- Key names are the full kernel names (`\REGISTRY\MACHINE\...`, `\REGISTRY\USER\<SID>\...`), from `CmCallbackGetKeyObjectIDEx`. The service shows them as `HKLM\...` and `HKU\...`.
+- Pre notifications are reported before the change is made, so the operation may still fail (e.g. access denied). Post notifications are only reported when the operation succeeded.
+- Each event carries the caller's process and thread, and is flagged when the caller was kernel mode or when a name or buffer could not be captured.
+- Registry access by the service itself is not reported.
+- The callback only reports; it always lets the operation proceed. If the driver unloads between a rename's pre and post callbacks, the saved old name leaks.
 
 ## Hook DLL injection
 

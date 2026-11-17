@@ -1095,7 +1095,7 @@
   severity: low
   action: alert
   sequence:
-    - Event == "ProcessCreated" && lower(Image) endsWith "\\wuauclt.exe" && lower(CommandLine) matches "(^|[\\s\"',\\\\])[-/]updatedeploymentprovider([\\s\"':=,]|$)" && lower(CommandLine) matches "(^|[\\s\"',\\\\])[-/]runhandlercomserver([\\s\"':=,]|$)"
+    - Event == "ProcessCreated" && lower(Image) endsWith "\\wuauclt.exe" && lower(CommandLine) matches "(^|[\\s\"',\\\\])[-/]updatedeploymentprovider([\\s\"':=,]|$)" && lower(CommandLine) matches "(^|[\\s\"',\\\\])[-/]runhandlercomserver([\\s\"':=,]|$)" && !(lower(CommandLine) matches "\\s/updatedeploymentprovider\\s+updatedeploymentprovider\\.dll\\s")
 - name: lolbas_xbootmgr_1
   description: 'LOLBAS XBootMgr.exe (Execute, T1202): Executes code as part of post-trace automation flow.'
   severity: low

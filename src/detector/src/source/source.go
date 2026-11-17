@@ -22,11 +22,15 @@ import (
 
 // ---- Replay ----
 
-// The log's "Time" format (FormatSystemTime in src/service/src/utils.cpp), in UTC
+// The log's "Time" format (FormatSystemTime in src/service/src/utils.cpp), in UTC:
+// "2026/11/15 21:05:48.123". The layout leaves the milliseconds out because Go's parser
+// accepts a fractional second after the seconds anyway, which also reads the whole-second
+// times of logs written before milliseconds were added.
 const logTimeLayout = "2006/01/02 15:04:05"
 
 // Replay sends each JSON line of an NDJSON log to out, then closes it. Lines that are not JSON
-// objects are skipped. The log's one-second time resolution makes maxspan approximate.
+// objects are skipped. Each event keeps its Seq from the log, so replayed detections name the
+// same lines a live run would; lines without one (older logs) are numbered by line.
 func Replay(path string, out chan<- engine.Event) error {
 	defer close(out)
 	f, err := os.Open(path)
@@ -49,7 +53,11 @@ func Replay(path string, out chan<- engine.Event) error {
 		if err != nil {
 			continue
 		}
-		out <- engine.Event{Seq: line, Time: t, Fields: fields}
+		seq := line
+		if s, ok := fields["Seq"].(float64); ok {
+			seq = uint64(s)
+		}
+		out <- engine.Event{Seq: seq, Time: t, Fields: fields}
 	}
 	return sc.Err()
 }

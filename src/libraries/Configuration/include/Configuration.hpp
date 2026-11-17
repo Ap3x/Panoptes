@@ -34,7 +34,8 @@ public:
 	/// @brief The type of container that the extensibility is running in
 	enum ContainerType : int {
 	  CONTAINER_TYPE_NONE = 0,
-	  CONTAINER_TYPE_YARA = 30
+	  CONTAINER_TYPE_YARA = 30,
+	  CONTAINER_TYPE_ML = 31
 	};
 
 	/// @brief Path patterns that are not scanned (see IsPathInList)

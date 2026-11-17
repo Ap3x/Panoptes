@@ -14,6 +14,9 @@ std::string BuildContainerCommandLine(Configuration::ContainerType ext)
 	case CONTAINER_TYPE_YARA:
 		result.append(extPath + EXT_YARA);
 		break;
+	case CONTAINER_TYPE_ML:
+		result.append(extPath + EXT_ML);
+		break;
 	default:
 		break;
 	}
@@ -46,10 +49,13 @@ static bool CreateContainerJob() {
 }
 
 ERRORCODE StartContainers() {
-	// Every extensibility is always loaded
-	const Configuration::ContainerType extensibility[] = {
-		Configuration::CONTAINER_TYPE_YARA,
-	};
+	// YARA is always loaded. PanoptesML is optional (built with BUILD_ML), so its container only
+	// starts when its DLL is in the ext folder
+	std::vector<Configuration::ContainerType> extensibility = { Configuration::CONTAINER_TYPE_YARA };
+	std::string mlPath = GetExecutableDirectory() + "\\ext\\" + EXT_ML;
+	if (GetFileAttributesA(mlPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+		extensibility.push_back(Configuration::CONTAINER_TYPE_ML);
+	}
 
 	if (!CreateContainerJob()) {
 		return CONTAINER_START;

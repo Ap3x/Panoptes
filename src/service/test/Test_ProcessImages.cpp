@@ -45,6 +45,11 @@ TEST(ProcessImages, UnknownProcessIsEmpty) {
 	EXPECT_EQ(LookupProcessImage(900005, At(0)), "");
 }
 
+TEST(ProcessImages, ResolveNamesProcessesWithoutAnImageFile) {
+	// QueryFullProcessImageName fails for these; kernel registry and file activity is charged to System
+	EXPECT_EQ(ResolveProcessImage(4, At(0)), "System");
+}
+
 TEST(ProcessImages, ResolveFallsBackToWindowsForRunningProcesses) {
 	// This process started before anything recorded it
 	std::string image = ResolveProcessImage(GetCurrentProcessId(), At(0));

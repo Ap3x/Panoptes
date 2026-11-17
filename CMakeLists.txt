@@ -9,6 +9,9 @@ option(BUILD_SCANNER "Build PanoptesScan and PanoptesScanCLI (gRPC, nlohmann-jso
 option(BUILD_LINTER "Build PanoptesLinter (nlohmann-json)" ON)
 option(BUILD_HOOK "Build the x64 and x86 hook DLLs (Detours)" ON)
 option(BUILD_DETECTOR "Build PanoptesDetector, the behavioral rule engine (needs Go)" ON)
+# Off by default: ONNX Runtime builds from source the first time, which takes a long while. It
+# has its own vcpkg manifest (src/extensibility/PanoptesML), so it is not in the features below
+option(BUILD_ML "Build the PanoptesML extension (ONNX Runtime, gRPC; separate vcpkg manifest)" OFF)
 
 option(BUILD_DOC "Build documentation" OFF)
 option(BUILD_WIX_INSTALLER "Build Wix installer package" OFF)
@@ -82,6 +85,9 @@ endif()
 if(BUILD_YARA)
     add_subdirectory(src/extensibility)
 endif()
+if(BUILD_ML)
+    add_subdirectory(src/extensibility/PanoptesML)
+endif()
 if(BUILD_CONTAINER)
     add_subdirectory(src/container)
 endif()
@@ -126,6 +132,13 @@ if(BUILD_DRIVER AND BUILD_SERVICE AND BUILD_CONTAINER AND BUILD_YARA AND BUILD_S
     # The service starts the detector when it is next to it; packages without it still run
     if(BUILD_DETECTOR)
         add_dependencies(TargetPackage PanoptesDetector)
+    endif()
+    # PanoptesML (and its model) is packaged when it is built
+    if(BUILD_ML)
+        add_dependencies(TargetPackage PanoptesML)
+        if(TARGET PanoptesMLQuery)
+            add_dependencies(TargetPackage PanoptesMLQuery)
+        endif()
     endif()
 
     # With BUILD_TESTS, the package also carries the hook tests. The x64 ones are targets here;

@@ -47,5 +47,8 @@ public:
 
 	YaraScanner(const char* Rules);
 	~YaraScanner();
+	// Owns g_yaraRules, so a copy would destroy the rules twice
+	YaraScanner(const YaraScanner&) = delete;
+	YaraScanner& operator=(const YaraScanner&) = delete;
 	std::vector<std::string> YaraScanFile(std::string PathToFile);
 };

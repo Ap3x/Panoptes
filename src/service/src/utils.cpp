@@ -117,6 +117,7 @@ std::string FormatSystemTime(const FILETIME& ft) {
 	   << std::setw(2) << st.wDay << ' '
 	   << std::setw(2) << st.wHour << ':'
 	   << std::setw(2) << st.wMinute << ':'
-	   << std::setw(2) << st.wSecond;
+	   << std::setw(2) << st.wSecond << '.'
+	   << std::setw(3) << st.wMilliseconds;
 	return ss.str();
 }

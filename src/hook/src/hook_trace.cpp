@@ -36,6 +36,61 @@ static VOID DebugMessage(const char* Format, ...)
 #endif
 }
 
+#pragma region Target identity
+
+/// @brief Duplicates Handle with query access added. A handle can be opened with only the access
+/// an attack needs (PROCESS_VM_WRITE, or THREAD_SET_CONTEXT for QueueUserAPC), which is not
+/// enough to ask whose it is. Duplicating it with wider access is checked against this process's
+/// token like an open, so it works whenever the caller could have opened the object for query
+/// itself, which is nearly always. DuplicateHandle is not hooked, so this cannot recurse.
+/// @return The new handle, or NULL. The caller closes it.
+static HANDLE DuplicateForQuery(HANDLE Handle, ACCESS_MASK Access)
+{
+	HANDLE query = NULL;
+	if (!DuplicateHandle(GetCurrentProcess(), Handle, GetCurrentProcess(), &query, Access, FALSE, 0))
+	{
+		return NULL;
+	}
+	return query;
+}
+
+/// @brief The ID of the process a handle refers to; 0 when it cannot be found even with a
+/// duplicated handle (the service then logs TargetResolved false).
+static DWORD TargetProcessIdOf(HANDLE ProcessHandle)
+{
+	DWORD processId = GetProcessId(ProcessHandle);
+	if (processId == 0)
+	{
+		HANDLE query = DuplicateForQuery(ProcessHandle, PROCESS_QUERY_LIMITED_INFORMATION);
+		if (query != NULL)
+		{
+			processId = GetProcessId(query);
+			CloseHandle(query);
+		}
+	}
+	return processId;
+}
+
+/// @brief The IDs of a thread and its process; 0 for both when neither the handle nor a duplicate
+/// of it can be queried.
+static VOID TargetThreadIdsOf(HANDLE ThreadHandle, DWORD* ProcessId, DWORD* ThreadId)
+{
+	*ProcessId = GetProcessIdOfThread(ThreadHandle);
+	*ThreadId = GetThreadId(ThreadHandle);
+	if (*ProcessId == 0)
+	{
+		HANDLE query = DuplicateForQuery(ThreadHandle, THREAD_QUERY_LIMITED_INFORMATION);
+		if (query != NULL)
+		{
+			*ProcessId = GetProcessIdOfThread(query);
+			*ThreadId = GetThreadId(query);
+			CloseHandle(query);
+		}
+	}
+}
+
+#pragma endregion
+
 #pragma region Detections
 VOID Log_PEWritten(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress, BOOL Executable)
 {
@@ -48,7 +103,7 @@ VOID Log_PEWritten(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress,
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString("NtWriteVirtualMemory", "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingPointer(BaseAddress, "BaseAddress"),
 		TraceLoggingBool(Executable, "Executable"));
@@ -68,13 +123,39 @@ VOID Log_PEBWritten(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULON
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString("NtWriteVirtualMemory", "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingUInt64((UINT64)Size, "Size"),
 		TraceLoggingHexUInt64((UINT64)PebOffset, "PebOffset"));
 
 	DebugMessage("[Panoptes] NtWriteVirtualMemory: %Iu bytes written to the PEB of the %s process at offset 0x%Ix\n",
 		Size, CurrentProcess ? "current" : "remote", PebOffset);
+}
+
+VOID Log_EntryPointWritten(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress, SIZE_T Size,
+	PVOID EntryPoint, BOOL CodeWritten, BOOL FieldWritten)
+{
+	if (!HookLoggingEnabled())
+	{
+		return;
+	}
+
+	TraceLoggingWrite(g_hHookProvider, "EntryPointWritten",
+		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
+		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
+		TraceLoggingString("NtWriteVirtualMemory", "Api"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
+		TraceLoggingBool(!CurrentProcess, "Remote"),
+		TraceLoggingPointer(BaseAddress, "BaseAddress"),
+		TraceLoggingUInt64((UINT64)Size, "Size"),
+		TraceLoggingPointer(EntryPoint, "EntryPoint"),
+		TraceLoggingBool(CodeWritten, "CodeWritten"),
+		TraceLoggingBool(FieldWritten, "FieldWritten"));
+
+	const char* what = (CodeWritten && FieldWritten) ? "entry point code and AddressOfEntryPoint field"
+		: CodeWritten ? "entry point code" : "AddressOfEntryPoint field";
+	DebugMessage("[Panoptes] NtWriteVirtualMemory: %Iu bytes written over the main image's %s in the %s process, entry point %p\n",
+		Size, what, CurrentProcess ? "current" : "remote", EntryPoint);
 }
 
 VOID Log_PEBRead(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULONG_PTR PebOffset)
@@ -90,7 +171,7 @@ VOID Log_PEBRead(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULONG_P
 		TraceLoggingLevel(WINEVENT_LEVEL_INFO),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString("NtReadVirtualMemory", "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingUInt64((UINT64)Size, "Size"),
 		TraceLoggingHexUInt64((UINT64)PebOffset, "PebOffset"));
@@ -110,7 +191,7 @@ VOID Log_ProtectionSetAttempt(HANDLE ProcessHandle, BOOL CurrentProcess, NTSTATU
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString("NtSetInformationProcess", "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingNTStatus(Status, "Status"));
 
@@ -125,13 +206,17 @@ VOID Log_ApcQueued(HANDLE ThreadHandle, BOOL CurrentProcess, const char* Api, PV
 		return;
 	}
 
+	DWORD targetProcessId = 0;
+	DWORD targetThreadId = 0;
+	TargetThreadIdsOf(ThreadHandle, &targetProcessId, &targetThreadId);
+
 	TraceLoggingWrite(g_hHookProvider, "ApcQueued",
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString(Api, "Api"),
-		TraceLoggingUInt32(GetProcessIdOfThread(ThreadHandle), "TargetProcessId"),
+		TraceLoggingUInt32(targetProcessId, "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
-		TraceLoggingUInt32(GetThreadId(ThreadHandle), "TargetThreadId"),
+		TraceLoggingUInt32(targetThreadId, "TargetThreadId"),
 		TraceLoggingPointer(ApcRoutine, "ApcRoutine"),
 		TraceLoggingHexUInt32(ApcFlags, "ApcFlags"));
 
@@ -150,7 +235,7 @@ VOID Log_RemoteThreadCreated(HANDLE ProcessHandle, PVOID StartRoutine, ULONG Cre
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString("NtCreateThreadEx", "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(TRUE, "Remote"),
 		TraceLoggingPointer(StartRoutine, "StartRoutine"),
 		TraceLoggingHexUInt32(CreateFlags, "CreateFlags"));
@@ -171,7 +256,7 @@ VOID Log_ExecutableAllocated(HANDLE ProcessHandle, BOOL CurrentProcess, const ch
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString(Api, "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingPointer(BaseAddress, "BaseAddress"),
 		TraceLoggingUInt64((UINT64)RegionSize, "RegionSize"),
@@ -194,7 +279,7 @@ VOID Log_ExecutableUnmapped(HANDLE ProcessHandle, BOOL CurrentProcess, const cha
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString(Api, "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingPointer(BaseAddress, "BaseAddress"),
 		TraceLoggingBool(IsImage, "IsImage"));
@@ -215,7 +300,7 @@ VOID Log_RemoteViewMapped(HANDLE ProcessHandle, const char* Api, PVOID BaseAddre
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString(Api, "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(TRUE, "Remote"),
 		TraceLoggingPointer(BaseAddress, "BaseAddress"),
 		TraceLoggingUInt64((UINT64)ViewSize, "ViewSize"),
@@ -240,7 +325,7 @@ VOID Log_PEMadeExecutable(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseA
 		TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
 		TraceLoggingKeyword(HOOK_KEYWORD_DETECTION),
 		TraceLoggingString("NtProtectVirtualMemory", "Api"),
-		TraceLoggingUInt32(GetProcessId(ProcessHandle), "TargetProcessId"),
+		TraceLoggingUInt32(TargetProcessIdOf(ProcessHandle), "TargetProcessId"),
 		TraceLoggingBool(!CurrentProcess, "Remote"),
 		TraceLoggingPointer(BaseAddress, "BaseAddress"),
 		TraceLoggingHexUInt32(OldProtection, "OldProtection"),

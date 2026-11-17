@@ -21,20 +21,20 @@ func TestDetectionLogAppendsJSONLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := engine.Match{Rule: r, Events: []engine.Event{{Seq: 7, Fields: map[string]any{
+	m := engine.Match{Rule: r, Events: []engine.Event{{Seq: 1763241926000007, Fields: map[string]any{
 		"Event": "ExecutableAllocated", "PID": 14388.0, "TargetProcessId": 13928.0,
 		"Image": `C:\a "quoted"\path.exe`, // must stay one valid line once escaped
 	}}}}
 
 	path := filepath.Join(t.TempDir(), "Logs", "detection.log") // the folder does not exist yet
-	now := time.Date(2026, 11, 10, 21, 5, 26, 0, time.UTC)
+	now := time.Date(2026, 11, 10, 21, 5, 26, 42_000_000, time.UTC)
 	reported := true
 	for i := 0; i < 2; i++ {
 		l, err := openDetectionLog(path) // reopening appends instead of truncating
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := l.Write(m, now, map[bool]*bool{true: &reported, false: nil}[i == 0]); err != nil {
+		if err := l.Write(m, m.TargetImage(), now, map[bool]*bool{true: &reported, false: nil}[i == 0]); err != nil {
 			t.Fatal(err)
 		}
 		l.Close()
@@ -58,9 +58,14 @@ func TestDetectionLogAppendsJSONLines(t *testing.T) {
 		t.Fatalf("want 2 lines, got %d", len(recs))
 	}
 	first := recs[0]
-	if first["Rule"] != "remote_rwx_allocation" || first["Time"] != "2026/11/10 21:05:26" ||
-		first["TargetPID"] != 14388.0 || first["Reported"] != true || first["Severity"] != "medium" {
+	if first["Rule"] != "remote_rwx_allocation" || first["Time"] != "2026/11/10 21:05:26.042" ||
+		first["TargetPID"] != 14388.0 || first["Reported"] != true || first["Severity"] != "medium" ||
+		first["Image"] != `C:\a "quoted"\path.exe` {
 		t.Fatalf("unexpected record: %v", first)
+	}
+	// Seq is read back exactly: it stays below 2^53, so a float64 holds it
+	if seqs, ok := first["EventSequences"].([]any); !ok || len(seqs) != 1 || seqs[0] != 1763241926000007.0 {
+		t.Fatalf("EventSequences = %v, want [1763241926000007]", first["EventSequences"])
 	}
 	if _, ok := recs[1]["Reported"]; ok {
 		t.Fatalf("replay record should not carry Reported: %v", recs[1])
@@ -95,7 +100,7 @@ func TestDetectionLogRotates(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 7; i++ {
-		if err := l.Write(m, time.Now(), nil); err != nil {
+		if err := l.Write(m, "", time.Now(), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -109,7 +114,7 @@ func TestDetectionLogRotates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.Write(m, time.Now(), nil)
+	l.Write(m, "", time.Now(), nil)
 	l.Close()
 	if lines("detection.log") != 3 || lines("detection2.log") != 2 {
 		t.Fatalf("reopen wrote to the wrong file: %d, %d", lines("detection.log"), lines("detection2.log"))
@@ -123,7 +128,7 @@ func TestDetectionLogRotates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.Write(m, time.Now(), nil)
+	l.Write(m, "", time.Now(), nil)
 	l.Close()
 	if lines("detection10.log") != 1 {
 		t.Fatalf("want the record in detection10.log, got %d lines", lines("detection10.log"))

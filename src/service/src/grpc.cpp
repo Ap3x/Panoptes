@@ -14,6 +14,7 @@
 #include "detector_stream.h"
 #include "process_images.h"
 #include <atomic>
+#include <map>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -29,8 +30,19 @@ using grpc::Status;
 
 std::unique_ptr<PanoptesExtensibility::Stub> stub_;
 std::unique_ptr<PanoptesService::Stub> selfStub_;
-std::vector<std::pair<ContainerType, int>> g_containerServerPorts;
 PanoptesContext* serviceContext;
+
+// The containers that have registered (Hello), one per extension type. A container that
+// restarts registers again on its new port and replaces its old entry
+static std::mutex g_containersLock;
+static std::map<ContainerType, int> g_containers;
+
+// Scans sent to a container whose result hasn't come back yet, by file hash. A scan that takes
+// longer than PANO_SCAN_TIMEOUT_SECONDS is taken to have failed (an extension can drop a file it
+// couldn't scan): the next request for the file sends it again, and a scanner waiting on it stops
+#define PANO_SCAN_TIMEOUT_SECONDS 120
+static std::mutex g_inFlightLock;
+static std::map<std::string, std::map<ContainerType, std::chrono::steady_clock::time_point>> g_inFlight;
 // The port the server listens on, set once it has started. The detector RPCs use it to find
 // the calling process
 static std::atomic<int> g_serverPort{ 0 };
@@ -128,6 +140,11 @@ bool CheckIfMalicious(std::string jsonString) {
 			return true;
 		}
 	}
+	// PanoptesML's verdict: its score was at or above its threshold
+	if (jsonObject.contains("ml_scan") && jsonObject["ml_scan"].value("malicious", false))
+	{
+		return true;
+	}
 
 	return false;
 }
@@ -212,6 +229,112 @@ bool PanoptesContainerClient::SendPeScanRequest(std::string pePath, std::string 
 	return reply.ack_type();
 }
 
+/// @brief The key an extension's result is stored under in a file's database entry
+static const char* ResultKey(ContainerType type) {
+	switch (type) {
+	case CONTAINER_TYPE_YARA: return "yara_scan";
+	case CONTAINER_TYPE_ML: return "ml_scan";
+	default: return nullptr;
+	}
+}
+
+/// @brief Asks one container to scan a file. Its result comes back later, through ScanResults
+static bool SendPeScan(int port, const std::string& pePath, const std::string& fileHash) {
+	// A stub per call: QueuePeScan runs on several server threads at once
+	auto channel = grpc::CreateChannel("localhost:" + std::to_string(port), grpc::InsecureChannelCredentials());
+	auto stub = PanoptesExtensibility::NewStub(channel);
+	ClientContext context;
+	context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5)); // it only queues the scan
+
+	PeScanInfo request;
+	request.set_file_hash(fileHash);
+	request.set_portable_executable_path(pePath);
+	AckMessage reply;
+	Status status = stub->PEScan(&context, request, &reply);
+	if (!status.ok()) {
+		std::cerr << "Scan request to the container on port " << port << " failed: " << status.error_message() << std::endl;
+		return false;
+	}
+	return reply.ack_type() == AckType::SUCCESS;
+}
+
+/// @brief Sends a file to each registered extension whose result its stored entry doesn't have
+/// yet and isn't already being scanned. With Poll, nothing is sent
+/// @return The result keys still expected for the file
+static std::vector<std::string> DispatchScans(const std::string& pePath, const std::string& fileHash, const std::string& entry, bool poll) {
+	nlohmann::json stored = entry.empty() ? nlohmann::json::object() : nlohmann::json::parse(entry, nullptr, false);
+	if (!stored.is_object()) {
+		stored = nlohmann::json::object();
+	}
+	std::map<ContainerType, int> containers;
+	{
+		std::lock_guard<std::mutex> lock(g_containersLock);
+		containers = g_containers;
+	}
+
+	std::vector<std::string> pending;
+	std::vector<std::pair<ContainerType, int>> toSend;
+	auto now = std::chrono::steady_clock::now();
+	auto expired = [now](std::chrono::steady_clock::time_point sent) {
+		return now - sent >= std::chrono::seconds(PANO_SCAN_TIMEOUT_SECONDS);
+	};
+	{
+		std::lock_guard<std::mutex> lock(g_inFlightLock);
+		auto& flights = g_inFlight[fileHash];
+		for (const auto& [type, port] : containers) {
+			const char* key = ResultKey(type);
+			if (key == nullptr || stored.contains(key)) {
+				continue;
+			}
+			auto flight = flights.find(type);
+			if (flight != flights.end() && !expired(flight->second)) {
+				pending.push_back(key); // sent, result not back yet
+				continue;
+			}
+			if (poll) {
+				continue; // never sent, or it gave up: nothing to wait for
+			}
+			flights[type] = now;
+			toSend.push_back({ type, port });
+			pending.push_back(key);
+		}
+		if (flights.empty()) {
+			g_inFlight.erase(fileHash);
+		}
+		// Files whose scans failed are never cleared by a result; drop them once they've expired
+		for (auto file = g_inFlight.begin(); file != g_inFlight.end();) {
+			for (auto flight = file->second.begin(); flight != file->second.end();) {
+				flight = expired(flight->second) ? file->second.erase(flight) : std::next(flight);
+			}
+			file = file->second.empty() ? g_inFlight.erase(file) : std::next(file);
+		}
+	}
+
+	for (const auto& [type, port] : toSend) {
+		if (!SendPeScan(port, pePath, fileHash)) {
+			std::lock_guard<std::mutex> lock(g_inFlightLock);
+			auto file = g_inFlight.find(fileHash);
+			if (file != g_inFlight.end()) {
+				file->second.erase(type);
+			}
+			pending.erase(std::remove(pending.begin(), pending.end(), std::string(ResultKey(type))), pending.end());
+		}
+	}
+	return pending;
+}
+
+/// @brief A container's result for a file came back: it's no longer waited on
+static void ScanFinished(const std::string& fileHash, ContainerType type) {
+	std::lock_guard<std::mutex> lock(g_inFlightLock);
+	auto file = g_inFlight.find(fileHash);
+	if (file != g_inFlight.end()) {
+		file->second.erase(type);
+		if (file->second.empty()) {
+			g_inFlight.erase(file);
+		}
+	}
+}
+
 void SelfQueuePeScan(std::string pePath, std::string fileHash) {
 	auto configuration = serviceContext->config;
 	if (Configuration::IsPathInList(configuration->m_exclusions, pePath)) {
@@ -261,9 +384,23 @@ class PanoptesImpl : public PanoptesService::Service {
 		std::string cleanMsg = CleanUpProtobufMessage(json_string);
 		WriteToLogFile(cleanMsg + "\n");
 
+		switch (request->container_event_reply_case()) {
+		case ContainerReply::kYaraScan:
+			ScanFinished(fileHash, CONTAINER_TYPE_YARA);
+			break;
+		case ContainerReply::kMlScan:
+			ScanFinished(fileHash, CONTAINER_TYPE_ML);
+			break;
+		default:
+			break;
+		}
+
 		serviceContext->database = PanoptesDatabase();
 		auto loadedDB = serviceContext->database.load();
 		std::string entry = loadedDB.GetEntry(fileHash);
+		// Each extension's result is merged into the file's entry as it arrives. Notify (and
+		// quarantine) when a result makes the file malicious, not again for each later one
+		bool wasMalicious = !entry.empty() && CheckIfMalicious(entry);
 		if (entry.empty()) {
 			loadedDB.AddEntry(fileHash, cleanMsg);
 			entry = cleanMsg;
@@ -273,7 +410,7 @@ class PanoptesImpl : public PanoptesService::Service {
 			entry = loadedDB.UpdateEntry(fileHash, cleanMsg);
 		}
 
-		if (CheckIfMalicious(entry)) {
+		if (!wasMalicious && CheckIfMalicious(entry)) {
 			std::string displayMessage = "Malicious File Detected: " + GetBaseName(filePath);
 			TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
 
@@ -307,13 +444,24 @@ class PanoptesImpl : public PanoptesService::Service {
 			}
 		}
 
+		// Every running extension scans the file: those whose result the stored entry doesn't
+		// have yet are sent it (a file scanned before PanoptesML was installed still gets its
+		// ML scan). Their results arrive through ScanResults
+		bool poll = request->poll();
 		auto loadedDB = serviceContext->database.load();
 		std::string entry = loadedDB.GetEntry(fileHash);
-		if (!entry.empty())
+		std::vector<std::string> pending = DispatchScans(fileToScan, fileHash, entry, poll);
+
+		response->set_ack_type(AckType::SUCCESS);
+		response->set_message(entry);
+		response->set_file_hash(fileHash);
+		for (const auto& key : pending) {
+			response->add_pending_scans(key);
+		}
+		// A scanner polling for the rest of the results gets them without another notification
+		if (!entry.empty() && !poll)
 		{
 			WriteToLogFile(entry + "\n");
-			response->set_ack_type(AckType::SUCCESS);
-			response->set_message(entry);
 			if (CheckIfMalicious(entry)) {
 				std::string displayMessage = "Malicious File Detected: " + GetBaseName(fileToScan.c_str());
 				TrayNotifications::Tray::ShowTrayIconBalloon("Panoptes EDR Detection", displayMessage.c_str());
@@ -321,12 +469,6 @@ class PanoptesImpl : public PanoptesService::Service {
 				if (configuration->m_quartine) {
 					MoveFileToQuarantine(request->portable_executable_path());
 				}
-			}
-		}
-		else {
-			for (auto container : g_containerServerPorts) {
-				PanoptesContainerClient client = PanoptesContainerClient(container.second);
-				client.SendPeScanRequest(request->portable_executable_path(), fileHash);
 			}
 		}
 
@@ -345,8 +487,10 @@ class PanoptesImpl : public PanoptesService::Service {
 
 		std::cout << "Hello: " << request->container_type() << std::endl;
 
-		std::pair<ContainerType, int> ContainerPortInfo = std::make_pair(request->container_type(), request->grpc_port());
-		g_containerServerPorts.push_back(ContainerPortInfo);
+		{
+			std::lock_guard<std::mutex> lock(g_containersLock);
+			g_containers[request->container_type()] = request->grpc_port();
+		}
 
 		response->set_ack_type(AckType::SUCCESS);
 		return ::grpc::Status::OK;

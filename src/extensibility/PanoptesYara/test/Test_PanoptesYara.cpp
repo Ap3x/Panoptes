@@ -29,6 +29,15 @@ namespace Yara {
 		EXPECT_GT(result.size(), 0);
 	}
 
+	// A file deleted before its scan used to free the scanner twice (heap corruption that
+	// ended the container). It must throw cleanly, and the scanner must still work afterwards
+	TEST_F(YaraScanTest, MissingFileThrowsAndScannerStillWorks) {
+		for (int i = 0; i < 3; i++) {
+			EXPECT_THROW(yaraScan->YaraScanFile("C:\\does\\not\\exist.exe"), std::runtime_error);
+		}
+		EXPECT_EQ(yaraScan->YaraScanFile("C:\\Windows\\System32\\notepad.exe").size(), 0);
+	}
+
 	TEST(SignatureTest, NotePadIsTrusted) {
 		SignatureInfo info = VerifyFileSignature("C:\\Windows\\System32\\notepad.exe");
 		EXPECT_TRUE(info.isSigned);

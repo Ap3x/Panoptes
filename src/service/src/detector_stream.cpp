@@ -1,4 +1,5 @@
 #include "detector_stream.h"
+#include "pano_log.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -20,7 +21,6 @@ struct DetectorSubscriberState {
 	std::condition_variable Wake;
 	std::deque<DetectorEventRecord> Queue;
 	std::unordered_set<std::string> EventNames; // empty: every event
-	UINT64 NextSequence = 1;
 	bool Stopping = false;
 };
 
@@ -70,7 +70,7 @@ bool DetectorSubscription::Wait(std::vector<DetectorEventRecord>& out, DWORD tim
 	return true;
 }
 
-void PublishDetectorEvent(const std::string& eventName, const std::string& json, const FILETIME& time)
+static void PublishDetectorEvent(const std::string& eventName, UINT64 sequence, const std::string& json, const FILETIME& time)
 {
 	if (g_SubscriberCount.load(std::memory_order_relaxed) == 0) {
 		return;
@@ -84,8 +84,7 @@ void PublishDetectorEvent(const std::string& eventName, const std::string& json,
 			if (!subscriber->EventNames.empty() && subscriber->EventNames.count(eventName) == 0) {
 				continue;
 			}
-			// The sequence advances even when the event is dropped, so the detector sees the gap
-			UINT64 sequence = subscriber->NextSequence++;
+			// A dropped event leaves a gap in the sequence, which tells the detector
 			if (subscriber->Queue.size() >= PANO_DETECTOR_QUEUE_MAX) {
 				continue;
 			}
@@ -93,6 +92,33 @@ void PublishDetectorEvent(const std::string& eventName, const std::string& json,
 		}
 		subscriber->Wake.notify_one();
 	}
+}
+
+// Microseconds since 1970 when the service started (see detector_stream.h)
+static UINT64 FirstSequence()
+{
+	ULARGE_INTEGER now;
+	FILETIME time = CurrentFileTime();
+	now.LowPart = time.dwLowDateTime;
+	now.HighPart = time.dwHighDateTime;
+	const UINT64 unixEpoch = 116444736000000000ULL; // 1970-01-01 as a FILETIME
+	return (now.QuadPart - unixEpoch) / 10;
+}
+
+// Held from numbering an event until it is written and queued, so Seq increases down pano.log
+// and along each subscriber's stream
+static std::mutex g_RecordLock;
+static UINT64 g_NextSequence = FirstSequence();
+
+std::string RecordEvent(nlohmann::ordered_json& event, const FILETIME& time)
+{
+	std::lock_guard<std::mutex> guard(g_RecordLock);
+	UINT64 sequence = g_NextSequence++;
+	event["Seq"] = sequence;
+	std::string line = event.dump();
+	WriteToLogFile(line + "\n");
+	PublishDetectorEvent(event.value("Event", ""), sequence, line, time);
+	return line;
 }
 
 FILETIME CurrentFileTime()

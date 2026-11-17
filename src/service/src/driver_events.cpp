@@ -50,7 +50,8 @@ typedef struct _PANO_WRITTEN_FILE
 	ULONGLONG FirstWriteTick;
 	ULONGLONG LastWriteTick;
 	FILETIME FirstWriteTime;
-	UINT64 ProcessId; // the most recent writer
+	UINT64 ProcessId;       // the most recent writer
+	FILETIME LastWriteTime; // when ProcessId wrote, to look up its image
 	UINT64 Writes;
 	UINT64 Bytes;
 	bool IsDosPath;
@@ -189,6 +190,24 @@ static const char *EventTypeName(UINT32 type)
 		return "FileSecurityChanged";
 	case PANO_EVENT_FILE_EA_CHANGED:
 		return "FileExtendedAttributesChanged";
+	case PANO_EVENT_REGISTRY_SET_VALUE:
+		return "RegistrySetValue";
+	case PANO_EVENT_REGISTRY_SAVE_KEY:
+		return "RegistrySaveKey";
+	case PANO_EVENT_REGISTRY_SET_KEY_SECURITY:
+		return "RegistrySetKeySecurity";
+	case PANO_EVENT_REGISTRY_DELETE_KEY:
+		return "RegistryDeleteKey";
+	case PANO_EVENT_REGISTRY_CREATE_KEY:
+		return "RegistryCreateKey";
+	case PANO_EVENT_REGISTRY_LOAD_KEY:
+		return "RegistryLoadKey";
+	case PANO_EVENT_REGISTRY_REPLACE_KEY:
+		return "RegistryReplaceKey";
+	case PANO_EVENT_REGISTRY_RENAME_KEY:
+		return "RegistryRenameKey";
+	case PANO_EVENT_REGISTRY_QUERY_VALUE:
+		return "RegistryQueryValue";
 	default:
 		return nullptr;
 	}
@@ -203,15 +222,13 @@ static FILETIME ToFileTime(INT64 timestamp)
 }
 
 // Events are ordered_json so keys are written in insertion order; every event sets "Event"
-// first so each log line starts with its type. time is when the event happened; the detector
-// gets it at full resolution, since the log's Time field only has whole seconds
-static void LogEvent(const nlohmann::ordered_json &event, const FILETIME &time)
+// first so each log line starts with its type. time is when the event happened, which the
+// detector gets as a FILETIME. RecordEvent appends the event's Seq
+static void LogEvent(nlohmann::ordered_json &event, const FILETIME &time)
 {
-	std::string line = event.dump();
-	PublishDetectorEvent(event.value("Event", ""), line, time);
-	line += '\n';
-	WriteToLogFile(line);
+	[[maybe_unused]] std::string line = RecordEvent(event, time);
 #ifdef _DEBUG
+	line += '\n';
 	{
 		std::lock_guard<std::mutex> lock(g_EchoLock);
 		if (g_EchoBuffer.size() + line.size() <= PANO_MAX_ECHO_BUFFER)
@@ -378,14 +395,20 @@ static void HandleFileModifiedEvent(const PANO_EVENT_HEADER *header, const PANO_
 	std::wstring dosPath = ToDosPath(ntPath);
 	std::string path = ToString(dosPath.empty() ? ToPipeOrMailslotPath(ntPath) : dosPath);
 	bool stillOpen = (data->Flags & PANO_FLAG_HANDLE_STILL_OPEN) != 0;
+	// The header's timestamp is when the driver reported the writes: when the handle closed, or
+	// when a handle still open was reported. The writes began at FirstWriteTime
+	FILETIME reportTime = ToFileTime(header->Timestamp);
+	FILETIME firstWriteTime = ToFileTime(data->FirstWriteTime);
 
 	nlohmann::ordered_json event;
 	event["Event"] = EventTypeName(header->Type);
 	event["PID"] = data->ProcessId;
+	event["Image"] = ResolveProcessImage((DWORD)data->ProcessId, firstWriteTime);
 	event["Path"] = path;
 	event["Writes"] = data->Writes;
 	event["Bytes"] = data->Bytes;
-	event["Time"] = FormatSystemTime(ToFileTime(data->FirstWriteTime));
+	event["Time"] = FormatSystemTime(reportTime);
+	event["FirstWriteTime"] = FormatSystemTime(firstWriteTime);
 	if (stillOpen)
 	{
 		event["StillOpen"] = true;
@@ -396,7 +419,7 @@ static void HandleFileModifiedEvent(const PANO_EVENT_HEADER *header, const PANO_
 	}
 	if (!IsLogExcluded(path))
 	{
-		LogEvent(event, ToFileTime(data->FirstWriteTime));
+		LogEvent(event, reportTime);
 	}
 
 	// A file still being written is not complete yet; it is scanned when its handle closes
@@ -448,6 +471,7 @@ static void HandleFileEvent(const PANO_EVENT_HEADER *header, const PANO_FILE_EVE
 		}
 		file.LastWriteTick = now;
 		file.ProcessId = data->ProcessId;
+		file.LastWriteTime = timestamp;
 		file.Writes++;
 		file.Bytes += data->Length;
 		return;
@@ -457,6 +481,7 @@ static void HandleFileEvent(const PANO_EVENT_HEADER *header, const PANO_FILE_EVE
 	event["Event"] = EventTypeName(header->Type);
 	event["PID"] = data->ProcessId;
 	event["TID"] = data->ThreadId;
+	event["Image"] = ResolveProcessImage((DWORD)data->ProcessId, timestamp);
 	event["Path"] = path;
 	event["Time"] = FormatSystemTime(timestamp);
 	if (data->Flags & PANO_FLAG_OPLOCKED)
@@ -518,6 +543,7 @@ static void HandleRenameEvent(const PANO_EVENT_HEADER *header, const PANO_RENAME
 	event["Event"] = EventTypeName(header->Type);
 	event["PID"] = data->ProcessId;
 	event["TID"] = data->ThreadId;
+	event["Image"] = ResolveProcessImage((DWORD)data->ProcessId, ToFileTime(header->Timestamp));
 	event["Path"] = source;
 	event["NewPath"] = destination;
 	event["Time"] = FormatSystemTime(ToFileTime(header->Timestamp));
@@ -563,7 +589,12 @@ static void HandleRenameEvent(const PANO_EVENT_HEADER *header, const PANO_RENAME
 					existing.FirstWriteTick = file.FirstWriteTick;
 					existing.FirstWriteTime = file.FirstWriteTime;
 				}
-				existing.LastWriteTick = std::max(existing.LastWriteTick, file.LastWriteTick);
+				if (file.LastWriteTick > existing.LastWriteTick)
+				{
+					existing.LastWriteTick = file.LastWriteTick;
+					existing.LastWriteTime = file.LastWriteTime;
+					existing.ProcessId = file.ProcessId;
+				}
 				existing.Writes += file.Writes;
 				existing.Bytes += file.Bytes;
 			}
@@ -575,6 +606,254 @@ static void HandleRenameEvent(const PANO_EVENT_HEADER *header, const PANO_RENAME
 	if (!hasPendingWrites)
 	{
 		RequestFileScan(destination);
+	}
+}
+
+// Shows a key's kernel name (\REGISTRY\MACHINE\...) the way tools and rules write it (HKLM\...).
+// Names under other roots are returned unchanged
+static std::wstring ToRegistryDisplayPath(const std::wstring &kernelPath)
+{
+	static const std::pair<std::wstring, std::wstring> roots[] = {
+		{L"\\REGISTRY\\MACHINE", L"HKLM"},
+		{L"\\REGISTRY\\USER", L"HKU"},
+	};
+	for (const auto &[root, display] : roots)
+	{
+		if (_wcsnicmp(kernelPath.c_str(), root.c_str(), root.size()) == 0 &&
+			(kernelPath.size() == root.size() || kernelPath[root.size()] == L'\\'))
+		{
+			return display + kernelPath.substr(root.size());
+		}
+	}
+	return kernelPath;
+}
+
+// Hive files arrive as the caller wrote them: an NT device path, a \??\C:\ path, or a DOS path.
+// Returns the DOS path where there is one
+static std::string ToRegistryFilePath(const std::wstring &path)
+{
+	static const std::wstring dosDevicePrefixes[] = {L"\\??\\", L"\\DosDevices\\"};
+	for (const auto &prefix : dosDevicePrefixes)
+	{
+		if (_wcsnicmp(path.c_str(), prefix.c_str(), prefix.size()) == 0)
+		{
+			return ToString(path.substr(prefix.size()));
+		}
+	}
+
+	std::wstring dosPath = ToDosPath(path);
+	return ToString(dosPath.empty() ? path : dosPath);
+}
+
+static const char *RegistryValueTypeName(UINT32 type)
+{
+	switch (type)
+	{
+	case REG_NONE:
+		return "REG_NONE";
+	case REG_SZ:
+		return "REG_SZ";
+	case REG_EXPAND_SZ:
+		return "REG_EXPAND_SZ";
+	case REG_BINARY:
+		return "REG_BINARY";
+	case REG_DWORD:
+		return "REG_DWORD";
+	case REG_DWORD_BIG_ENDIAN:
+		return "REG_DWORD_BIG_ENDIAN";
+	case REG_LINK:
+		return "REG_LINK";
+	case REG_MULTI_SZ:
+		return "REG_MULTI_SZ";
+	case REG_QWORD:
+		return "REG_QWORD";
+	default:
+		return nullptr;
+	}
+}
+
+// The value's data exactly as written, as hex. String data may hold anything (a payload stored
+// in a REG_SZ decodes to nonsense), so this is always logged alongside the decoded form
+static std::string RegistryValueHex(const BYTE *data, UINT32 length)
+{
+	static const char digits[] = "0123456789ABCDEF";
+	std::string hex;
+	hex.reserve(length * 2);
+	for (UINT32 i = 0; i < length; i++)
+	{
+		hex += digits[data[i] >> 4];
+		hex += digits[data[i] & 0xF];
+	}
+	return hex;
+}
+
+// The value's data decoded for rules: text for string types, a number for DWORD and QWORD, a
+// list for MULTI_SZ. Null for other types, or data cut short of its type's size
+static nlohmann::json RegistryValueData(UINT32 type, const BYTE *data, UINT32 length)
+{
+	auto readString = [](const BYTE *bytes, UINT32 byteLength) {
+		std::wstring text(byteLength / sizeof(WCHAR), L'\0');
+		memcpy(text.data(), bytes, text.size() * sizeof(WCHAR)); // the data is not aligned
+		return text;
+	};
+
+	switch (type)
+	{
+	case REG_SZ:
+	case REG_EXPAND_SZ:
+	case REG_LINK:
+	{
+		std::wstring text = readString(data, length);
+		text.erase(std::find(text.begin(), text.end(), L'\0'), text.end());
+		return ToString(text);
+	}
+	case REG_MULTI_SZ:
+	{
+		std::wstring text = readString(data, length);
+		nlohmann::json strings = nlohmann::json::array();
+		size_t start = 0;
+		while (start < text.size())
+		{
+			size_t end = text.find(L'\0', start);
+			if (end == start)
+			{
+				break; // the empty string that ends the list
+			}
+			if (end == std::wstring::npos)
+			{
+				end = text.size();
+			}
+			strings.push_back(ToString(text.substr(start, end - start)));
+			start = end + 1;
+		}
+		return strings;
+	}
+	case REG_DWORD:
+		if (length >= sizeof(UINT32))
+		{
+			UINT32 value;
+			memcpy(&value, data, sizeof(value));
+			return value;
+		}
+		break;
+	case REG_QWORD:
+		if (length >= sizeof(UINT64))
+		{
+			UINT64 value;
+			memcpy(&value, data, sizeof(value));
+			return value;
+		}
+		break;
+	}
+	return nullptr;
+}
+
+static void HandleRegistryEvent(const PANO_EVENT_HEADER *header, const PANO_REGISTRY_EVENT_DATA *data)
+{
+	if (data->ProcessId == GetCurrentProcessId())
+	{
+		return;
+	}
+
+	std::wstring keyName(data->Strings, data->KeyNameLength);
+	std::wstring secondName(data->Strings + data->KeyNameLength, data->SecondNameLength);
+	const BYTE *valueData = (const BYTE *)(data->Strings + data->KeyNameLength + data->SecondNameLength);
+	std::string key = ToString(ToRegistryDisplayPath(keyName));
+
+	nlohmann::ordered_json event;
+	event["Event"] = EventTypeName(header->Type);
+	event["PID"] = data->ProcessId;
+	event["TID"] = data->ThreadId;
+	// Rules need to know who changed the registry: services.exe installing a service or lsass.exe
+	// reading the SAM is normal, any other process doing so is not
+	event["Image"] = ResolveProcessImage((DWORD)data->ProcessId, ToFileTime(header->Timestamp));
+	event["Key"] = key;
+
+	switch (header->Type)
+	{
+	case PANO_EVENT_REGISTRY_SET_VALUE:
+	{
+		// The default value of a key has no name
+		event["ValueName"] = ToString(secondName);
+		const char *typeName = RegistryValueTypeName(data->Detail);
+		if (typeName != nullptr)
+		{
+			event["Type"] = typeName;
+		}
+		else
+		{
+			event["Type"] = data->Detail;
+		}
+		event["DataSize"] = data->DataSize;
+		nlohmann::json decoded = RegistryValueData(data->Detail, valueData, data->DataLength);
+		if (!decoded.is_null())
+		{
+			event["Data"] = std::move(decoded);
+		}
+		event["DataHex"] = RegistryValueHex(valueData, data->DataLength);
+		if (data->Flags & PANO_FLAG_DATA_TRUNCATED)
+		{
+			event["DataTruncated"] = true;
+		}
+		break;
+	}
+	case PANO_EVENT_REGISTRY_SAVE_KEY:
+		event["Path"] = ToRegistryFilePath(secondName);
+		event["Format"] = data->Detail;
+		break;
+	case PANO_EVENT_REGISTRY_SET_KEY_SECURITY:
+		event["Changed"] = SecurityInformationNames(data->Detail);
+		break;
+	case PANO_EVENT_REGISTRY_LOAD_KEY:
+		event["Path"] = ToRegistryFilePath(secondName);
+		event["LoadFlags"] = data->Detail;
+		break;
+	case PANO_EVENT_REGISTRY_REPLACE_KEY:
+	{
+		// Data holds the file the old hive was saved to
+		std::wstring oldFile(data->DataLength / sizeof(WCHAR), L'\0');
+		memcpy(oldFile.data(), valueData, oldFile.size() * sizeof(WCHAR)); // the data is not aligned
+		event["Path"] = ToRegistryFilePath(secondName);
+		event["OldPath"] = ToRegistryFilePath(oldFile);
+		if (data->Flags & PANO_FLAG_DATA_TRUNCATED)
+		{
+			event["OldPathTruncated"] = true;
+		}
+		break;
+	}
+	case PANO_EVENT_REGISTRY_RENAME_KEY:
+		event["NewKey"] = ToString(ToRegistryDisplayPath(secondName));
+		break;
+	case PANO_EVENT_REGISTRY_QUERY_VALUE:
+		event["ValueName"] = ToString(secondName);
+		event["InformationClass"] = data->Detail;
+		break;
+	}
+
+	event["Time"] = FormatSystemTime(ToFileTime(header->Timestamp));
+	if (data->Flags & PANO_FLAG_KERNEL_MODE_CALLER)
+	{
+		event["KernelMode"] = true;
+	}
+	if (data->Flags & PANO_FLAG_NAME_TRUNCATED)
+	{
+		event["NameTruncated"] = true;
+	}
+	if (data->Flags & PANO_FLAG_CAPTURE_FAILED)
+	{
+		event["Incomplete"] = true;
+	}
+
+	// A key renamed into or out of an excluded path is still worth seeing, so the rename is only
+	// hidden when both names are excluded
+	bool excluded = IsLogExcluded(key);
+	if (excluded && header->Type == PANO_EVENT_REGISTRY_RENAME_KEY)
+	{
+		excluded = IsLogExcluded(event["NewKey"].get<std::string>());
+	}
+	if (!excluded)
+	{
+		LogEvent(event, ToFileTime(header->Timestamp));
 	}
 }
 
@@ -692,6 +971,25 @@ static void HandleEvent(const BYTE *buffer, DWORD bytes)
 		}
 
 		HandleProcessEvent(header, process);
+		return;
+	}
+
+	// Every PANO_EVENT_REGISTRY_* type, which are numbered consecutively, carries a PANO_REGISTRY_EVENT_DATA
+	if (header->Type >= PANO_EVENT_REGISTRY_SET_VALUE && header->Type <= PANO_EVENT_REGISTRY_QUERY_VALUE)
+	{
+		if (payloadSize < FIELD_OFFSET(PANO_REGISTRY_EVENT_DATA, Strings))
+		{
+			return;
+		}
+
+		const PANO_REGISTRY_EVENT_DATA *registry = (const PANO_REGISTRY_EVENT_DATA *)payload;
+		UINT64 neededBytes = ((UINT64)registry->KeyNameLength + registry->SecondNameLength) * sizeof(WCHAR) + registry->DataLength;
+		if (neededBytes > payloadSize - FIELD_OFFSET(PANO_REGISTRY_EVENT_DATA, Strings))
+		{
+			return;
+		}
+
+		HandleRegistryEvent(header, registry);
 		return;
 	}
 
@@ -841,13 +1139,17 @@ static void WrittenFileScanThread()
 			nlohmann::ordered_json event;
 			event["Event"] = "FileModified";
 			event["PID"] = file.ProcessId;
+			event["Image"] = ResolveProcessImage((DWORD)file.ProcessId, file.LastWriteTime);
 			event["Path"] = path;
 			event["Writes"] = file.Writes;
 			event["Bytes"] = file.Bytes;
-			event["Time"] = FormatSystemTime(file.FirstWriteTime);
+			// An older driver reports each write and never the close, so the last write stands in
+			// for it
+			event["Time"] = FormatSystemTime(file.LastWriteTime);
+			event["FirstWriteTime"] = FormatSystemTime(file.FirstWriteTime);
 			if (!IsLogExcluded(path))
 			{
-				LogEvent(event, file.FirstWriteTime);
+				LogEvent(event, file.LastWriteTime);
 			}
 
 			// A file still being written is not complete yet; it is scanned once it settles

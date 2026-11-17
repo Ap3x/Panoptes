@@ -1,5 +1,7 @@
 #include "PanoptesYara.h"
 #include <string>
+#include <iostream>
+#include <stdexcept>
 
 /// @brief The main entry point for the DLL
 /// @param module The module handle
@@ -46,8 +48,17 @@ extern "C" PANO_API bool PanoEntry(PeScan* data)
 {
 	std::string rules = "rules.pkg";
 
-	YaraScanner yaraScan = YaraScanner::YaraScanner(rules.c_str());
-	std::vector<std::string> scanDataResults = yaraScan.YaraScanFile(data->PePath);
+	std::vector<std::string> scanDataResults;
+	try {
+		YaraScanner yaraScan(rules.c_str());
+		scanDataResults = yaraScan.YaraScanFile(data->PePath);
+	}
+	catch (const std::exception& e) {
+		// An exception must not leave this extern "C" export: it would end the container,
+		// and every later scan with it. A file deleted or locked before its scan is common
+		std::cerr << "YARA scan of " << data->PePath << " failed: " << e.what() << std::endl;
+		return false;
+	}
 	SignatureInfo signature = VerifyFileSignature(data->PePath);
 
 	PanoptesServiceClient client = PanoptesServiceClient();

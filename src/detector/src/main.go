@@ -31,6 +31,9 @@ func main() {
 	debugSvc := flag.Bool("debug-service", false, "find the service port under HKCU (debug builds)")
 	reorderDelay := flag.Duration("reorder", 2*time.Second,
 		"hold events this long to put driver and hook events back in time order (0 disables)")
+	tolerance := flag.Duration("tolerance", 2*time.Second,
+		"let a sequence step match an event this far before the previous step's, when one is a hook "+
+			"event and the other a driver event (their clocks drift apart; 0 disables)")
 	detectionLogPath := flag.String("detection-log", defaultDetectionLog(),
 		"file detections are appended to, one JSON object per line")
 	flag.Parse()
@@ -43,6 +46,7 @@ func main() {
 	}
 	log.Printf("loaded %d rules", len(rs))
 	eng := engine.New(rs)
+	eng.Tolerance = *tolerance
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -71,9 +75,11 @@ func main() {
 		process := func(evs []engine.Event) {
 			for _, ev := range evs {
 				for _, m := range eng.Process(ev) {
-					enc.Encode(summary(m))
+					// The processes in a replayed log are not running, so only the events name them
+					image := m.TargetImage()
+					enc.Encode(summary(m, image))
 					if dlog != nil {
-						if err := dlog.Write(m, time.Now(), nil); err != nil {
+						if err := dlog.Write(m, image, time.Now(), nil); err != nil {
 							log.Printf("detection log: %v", err)
 						}
 					}
@@ -134,8 +140,9 @@ func runLive(ctx context.Context, eng *engine.Engine, reorder *engine.Reorderer,
 	go func() {
 		var reporter *source.Service // separate connection for reports, opened lazily
 		for m := range matches {
-			reported := report(ctx, &reporter, debugSvc, m)
-			writeDetection(dlog, m, reported)
+			image := detectionImage(m)
+			reported := report(ctx, &reporter, debugSvc, m, image)
+			writeDetection(dlog, m, image, reported)
 		}
 	}()
 
@@ -170,7 +177,7 @@ func runLive(ctx context.Context, eng *engine.Engine, reorder *engine.Reorderer,
 				default:
 					// The service is far behind; keep the record rather than block matching
 					log.Printf("report queue full; %s not reported", m.Rule.Name)
-					writeDetection(dlog, m, false)
+					writeDetection(dlog, m, detectionImage(m), false)
 				}
 			}
 		}
@@ -180,19 +187,33 @@ func runLive(ctx context.Context, eng *engine.Engine, reorder *engine.Reorderer,
 // Detections waiting to be reported before new ones are only written to detection.log
 const maxPendingReports = 256
 
-func writeDetection(dlog *detectionLog, m engine.Match, reported bool) {
+func writeDetection(dlog *detectionLog, m engine.Match, image string, reported bool) {
 	if dlog == nil {
 		return
 	}
-	if err := dlog.Write(m, time.Now(), &reported); err != nil {
+	if err := dlog.Write(m, image, time.Now(), &reported); err != nil {
 		log.Printf("detection log: %v", err)
 	}
+}
+
+// detectionImage is the image of the process a live detection applies to: from the matched
+// events, or else asked of Windows while the process is still running (it may have started
+// before the service, which then logs its events without an Image). "" when neither knows.
+func detectionImage(m engine.Match) string {
+	if image := m.TargetImage(); image != "" {
+		return image
+	}
+	pid, ok := m.TargetPID()
+	if !ok {
+		return ""
+	}
+	return runningProcessImage(pid, m.Events[len(m.Events)-1].Time)
 }
 
 // report sends the detection to the service over *reporter, connecting first if needed and
 // dropping the connection on failure so the next detection reconnects. Returns whether the
 // service accepted it.
-func report(ctx context.Context, reporter **source.Service, debugSvc bool, m engine.Match) bool {
+func report(ctx context.Context, reporter **source.Service, debugSvc bool, m engine.Match, image string) bool {
 	if *reporter == nil {
 		if *reporter, _ = source.Connect(debugSvc); *reporter == nil {
 			log.Printf("cannot report %s: service unavailable", m.Rule.Name)
@@ -201,7 +222,7 @@ func report(ctx context.Context, reporter **source.Service, debugSvc bool, m eng
 	}
 	rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := (*reporter).Report(rctx, toProto(m)); err != nil {
+	if err := (*reporter).Report(rctx, toProto(m, image)); err != nil {
 		log.Printf("report %s: %v", m.Rule.Name, err)
 		(*reporter).Close()
 		*reporter = nil
@@ -210,22 +231,17 @@ func report(ctx context.Context, reporter **source.Service, debugSvc bool, m eng
 	return true
 }
 
-func toProto(m engine.Match) *pb.Detection {
+func toProto(m engine.Match, image string) *pb.Detection {
 	d := &pb.Detection{
-		Rule:        m.Rule.Name,
-		Description: m.Rule.Description,
-		Severity:    severity(m.Rule.Severity),
-		Action:      action(m.Rule.Action),
+		Rule:           m.Rule.Name,
+		Description:    m.Rule.Description,
+		Severity:       severity(m.Rule.Severity),
+		Action:         action(m.Rule.Action),
+		ImagePath:      image,
+		EventSequences: m.Sequences(),
 	}
 	if pid, ok := m.TargetPID(); ok {
 		d.ProcessId = pid
-	}
-	last := m.Events[len(m.Events)-1].Fields
-	if img, ok := last["Image"].(string); ok {
-		d.ImagePath = img
-	}
-	for _, ev := range m.Events {
-		d.EventSequences = append(d.EventSequences, ev.Seq)
 	}
 	// The service checks the process existed by then, so a reused PID is never acted on
 	d.Timestamp = toFileTime(m.Events[len(m.Events)-1].Time)
@@ -238,7 +254,7 @@ func toFileTime(t time.Time) int64 {
 	return t.UnixNano()/100 + epochDiff
 }
 
-func summary(m engine.Match) map[string]any {
+func summary(m engine.Match, image string) map[string]any {
 	evs := make([]map[string]any, len(m.Events))
 	for i, ev := range m.Events {
 		evs[i] = ev.Fields
@@ -246,7 +262,7 @@ func summary(m engine.Match) map[string]any {
 	pid, _ := m.TargetPID()
 	return map[string]any{"Rule": m.Rule.Name, "Description": m.Rule.Description,
 		"Severity": m.Rule.Severity, "Action": m.Rule.Action, "Key": m.Key, "TargetPID": pid,
-		"Events": evs}
+		"Image": image, "EventSequences": m.Sequences(), "Events": evs}
 }
 
 func severity(s rules.Severity) pb.DetectionSeverity {

@@ -3,20 +3,34 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 // Fan-out of logged events to PanoptesDetector over the SubscribeEvents RPC.
 //
-// The driver and hook event threads call PublishDetectorEvent next to WriteToLogFile. Each
-// subscriber has a bounded queue; when it is full the event is dropped for that subscriber
-// rather than blocking the event threads, and the gap in its sequence numbers tells the
-// detector events were lost.
+// The driver and hook event threads log through RecordEvent, which numbers each event, writes
+// it to pano.log and queues it for every subscriber. Each subscriber has a bounded queue; when
+// it is full the event is dropped for that subscriber rather than blocking the event threads,
+// and the gap in the sequence numbers tells the detector events were lost.
+//
+// The sequence number is the event's "Seq" in pano.log, so a detection's EventSequences name
+// the exact log lines it matched. It starts at the service's start time in microseconds since
+// 1970 and then counts up by one per event, so numbers keep increasing across restarts and a
+// Seq names one line across every pano.log file. It stays below 2^53, so JSON readers that
+// parse numbers as doubles read it exactly.
 
 /// @brief One event as sent to the detector (a DetectorEvent message)
 struct DetectorEventRecord {
-	UINT64 Sequence;   // per subscriber, increments by one for every event meant for it
+	UINT64 Sequence;   // the event's Seq in pano.log
 	INT64 Timestamp;   // FILETIME, UTC
 	std::string Json;  // the line written to pano.log, without the newline
 };
+
+/// @brief Gives event the next sequence number (appended as "Seq"), writes it to pano.log and
+/// queues it for every subscriber that wants it, in that order for every event, so Seq
+/// increases down the log
+/// @param time When the event happened, at full resolution, for the detector
+/// @return The line written, without the newline
+std::string RecordEvent(nlohmann::ordered_json& event, const FILETIME& time);
 
 struct DetectorSubscriberState;
 
@@ -40,13 +54,6 @@ private:
 	explicit DetectorSubscription(std::shared_ptr<DetectorSubscriberState> state);
 	std::shared_ptr<DetectorSubscriberState> m_state;
 };
-
-/// @brief Queues an event for every subscriber that wants eventName. Cheap when nobody is
-/// subscribed. Never blocks on a subscriber
-/// @param eventName The event's "Event" field
-/// @param json The log line, without the trailing newline
-/// @param time When the event happened
-void PublishDetectorEvent(const std::string& eventName, const std::string& json, const FILETIME& time);
 
 /// @brief The current time as a FILETIME, for events that carry no timestamp of their own
 FILETIME CurrentFileTime();

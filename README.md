@@ -19,13 +19,14 @@ Panoptes is an Endpoint Detection and Response (EDR) system designed for educati
 - Userland ntdll hooks for code injection and process tampering techniques ([details](src/hook/README.md))
 - Behavioral detection: a Go rule engine matches sequences of events (injection, process hollowing, tampering, suspicious command lines and 187 LOLBAS techniques) as they stream from the service, and can kill or quarantine the process ([details](src/detector/README.md))
 - Static analysis using Yara-X with custom rules, and Authenticode signature verification using WinVerifyTrust ([details](src/extensibility/README.md))
+- Machine-learning static analysis (optional, `BUILD_ML`): PanoptesML scores PE files with a neural network trained on [EMBER2024](https://huggingface.co/datasets/joyce8/EMBER2024), run with ONNX Runtime. The model is encrypted inside the DLL, and the Go tools to train, evaluate and test it are included ([details](src/extensibility/README.md#panoptesml))
 - Fault-isolated scanning: each scanning module runs in its own container process
 - Persistent storage using RocksDB, so files already scanned are not scanned again
 - JSON (NDJSON) logs compatible with ELK, [HELK](https://github.com/Cyb3rWard0g/HELK), and other SIEM solutions, and a [terminal log viewer](tools/README.md)
 - JSON configuration file with a built-in linter
 - Right-click context menu integration and a command-line interface for scanning
 - MSI installer for easy installation and removal
-- Unit tests for the Yara module, the linter, the service, the detector and its rules, and every hooked API
+- Unit tests for the Yara module, the linter, the service, the detector and its rules, the ML tools, and every hooked API
 
 ## About the Name
 
@@ -47,7 +48,7 @@ The driver and the hook DLL only produce events; `PanoptesService` does all of t
 | [Hook DLL](src/hook/README.md) (`PanoptesDLLx64.dll`, `PanoptesDLLx86.dll`) | Hooks ntdll inside each injected process to catch code injection and process tampering. |
 | [`PanoptesService`](src/service/README.md) | Collects the driver's and the hooks' events, writes the log, queues scans, quarantines detections and shows tray notifications. Reads the [configuration](src/service/README.md#configuration). |
 | [`PanoptesDetector`](src/detector/README.md) | Matches behavioral rules (`rules\*.yaml`) against the event stream and reports detections to the service, which logs them, shows a notification and, with `EnforceDetectionActions`, kills or quarantines the process. The service starts it. |
-| [Containers](src/container/README.md) and [extensibility modules](src/extensibility/README.md) | Scan files for the service, each module in its own process. `PanoptesYara` is the core module. |
+| [Containers](src/container/README.md) and [extensibility modules](src/extensibility/README.md) | Scan files for the service, each module in its own process. `PanoptesYara` is the core module; `PanoptesML` (optional) adds an ML verdict. Every file the service scans goes to each running module, and their results are stored together. |
 | [Scanners](src/scanner/README.md) | `PanoptesScan` (right-click menu) and `PanoptesScanCLI` ask the service to scan a file. |
 | [Linter](src/linter/README.md) | Checks a configuration file. |
 | [Tools](tools/README.md) | A terminal UI for browsing logs by process. |
@@ -74,7 +75,7 @@ Every event ends up in one log, `C:\ProgramData\Panoptes\Logs\pano.log`, one JSO
 
 ## Usage
 
-- Right-click files and choose **Scan with Panoptes**, or use `PanoptesScanCLI.exe -file <file>` ([scanners](src/scanner/README.md))
+- Right-click files and choose **Scan with Panoptes**, or use `PanoptesScanCLI.exe -file <file>` ([scanners](src/scanner/README.md)). The file is scanned by YARA and, when installed, PanoptesML; the CLI waits for both and prints the combined result
 - Monitor tray notifications for detections
 - Check quarantine folder: `C:\ProgramData\Panoptes\Quarantine`
 - Review behavioral detections in `C:\ProgramData\Panoptes\Logs\detection.log`, or test rules offline by replaying a log with a Debug build or `go run` (the installed Release exe runs without a console and prints nothing; see the [detector README](src/detector/README.md#rule-development-without-the-service)):
@@ -95,7 +96,7 @@ Every event ends up in one log, `C:\ProgramData\Panoptes\Logs\pano.log`, one JSO
 - [Visual Studio 2026](https://visualstudio.microsoft.com/) with C++ desktop development workload
 - [vcpkg](https://vcpkg.io/en/) (included with Visual Studio or standalone)
 - [Windows Driver Kit (WDK)](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) (for kernel driver builds)
-- [Go](https://go.dev/dl) (for the detector, `winget install GoLang.Go`; or configure with `-DBUILD_DETECTOR=OFF`)
+- [Go](https://go.dev/dl) (for the detector, `winget install GoLang.Go`; or configure with `-DBUILD_DETECTOR=OFF`). PanoptesML also needs it, to encrypt its model into the DLL
 - Test signing enabled (for driver development)
 - Virtual Machine configured for Windows Kernel Debugging using WinDbg
 
@@ -149,10 +150,12 @@ cd bin/Debug/tests
 ./Test_Service.exe
 ```
 
-The detector's tests, including every shipped rule, run with Go:
+The detector's tests, including every shipped rule, run with Go, as do the PanoptesML tools' (feature extraction, training, model export and encryption):
 
 ```powershell
 cd src/detector
+go test ./...
+cd ../extensibility/PanoptesML/tools
 go test ./...
 ```
 
@@ -166,6 +169,8 @@ The following options can be passed during configuration with `-D`:
 |--------|---------|-------------|
 | `BUILD_DRIVER` | OFF | Build the kernel driver package (requires WDK) |
 | `BUILD_DETECTOR` | ON | Build `PanoptesDetector` and copy its rules to `bin/<config>/rules` (requires Go) |
+| `BUILD_ML` | OFF | Build the PanoptesML module into `bin/<config>/ext`, with the model from `assets/ml/model.onnx` encrypted inside it (requires Go). Its own vcpkg sub-build compiles ONNX Runtime the first time, which takes a while; see [building PanoptesML](src/extensibility/README.md#building) |
+| `PANOPTES_ML_EMBED_MODEL` | ON | With `BUILD_ML`: embed the model encrypted in the DLL. `OFF` ships `model.onnx` next to it unencrypted |
 | `BUILD_GRPC` | ON | Generate gRPC code from protobuf definitions |
 | `BUILD_TESTS` | OFF | Build the unit tests into `bin/<config>/tests` (enabled by the `tests` preset) |
 | `BUILD_DOC` | OFF | Build Doxygen documentation |
@@ -194,7 +199,7 @@ cmake --build --preset installer
 
 In VS Code, select the **MSI Installer** configure preset and the **MSI Installer (Release)** build preset in the CMake Tools status bar, then run **CMake: Build**.
 
-The MSI will be output to `bin/Release/installer/PanoptesInstaller.msi`.
+The MSI will be output to `bin/Release/installer/PanoptesInstaller.msi`. It includes PanoptesML (`ext\PanoptesML.dll`) when the build is configured with `-DBUILD_ML=ON`, e.g. `cmake --preset installer -DBUILD_ML=ON`.
 
 ## Screenshots of Panoptes Features
 ### Scanning and Detecting Malicious Activity Notification

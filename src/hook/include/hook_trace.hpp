@@ -47,6 +47,19 @@ VOID Log_PEWritten(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress,
 /// @param PebOffset The offset of the write from the start of the PEB.
 VOID Log_PEBWritten(HANDLE ProcessHandle, BOOL CurrentProcess, SIZE_T Size, ULONG_PTR PebOffset);
 
+/// @brief NtWriteVirtualMemory wrote over the entry point of a process's main image (the image
+/// PEB.ImageBaseAddress points at): the first byte of the entry point code, the AddressOfEntryPoint
+/// field of its headers, or both. Event "EntryPointWritten".
+/// @param ProcessHandle The process written to.
+/// @param CurrentProcess Whether ProcessHandle is the current process.
+/// @param BaseAddress Where the write started.
+/// @param Size The number of bytes written.
+/// @param EntryPoint The entry point address after the write, or NULL if AddressOfEntryPoint is 0.
+/// @param CodeWritten Whether the write covered the entry point code.
+/// @param FieldWritten Whether the write covered the AddressOfEntryPoint field.
+VOID Log_EntryPointWritten(HANDLE ProcessHandle, BOOL CurrentProcess, PVOID BaseAddress, SIZE_T Size,
+	PVOID EntryPoint, BOOL CodeWritten, BOOL FieldWritten);
+
 /// @brief NtReadVirtualMemory read from a process's PEB. Event "PEBRead".
 /// @param ProcessHandle The process read from.
 /// @param CurrentProcess Whether ProcessHandle is the current process.

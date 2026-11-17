@@ -105,6 +105,22 @@ else {
     Write-Host 'No PanoptesDetector.exe in the build (configure with BUILD_DETECTOR to include it); packaging without it.' -ForegroundColor Yellow
 }
 
+# PanoptesML is optional (BUILD_ML). The service only starts its container when the DLL is in
+# ext\, and the module loads model.onnx from the same folder
+if (Test-Path (Join-Path $BuildDir 'ext\PanoptesML.dll')) {
+    $layout['Panoptes'] += @('ext\PanoptesML.dll')
+    # The test tool scores files with ext\PanoptesML.dll directly, without the service
+    if (Test-Path (Join-Path $BuildDir 'PanoptesMLQuery.exe')) {
+        $layout['Panoptes'] += @('PanoptesMLQuery.exe')
+    }
+    # The model is normally built into the DLL, encrypted. A model.onnx is only next to it when
+    # the build was configured with PANOPTES_ML_EMBED_MODEL=OFF
+    if (Test-Path (Join-Path $BuildDir 'ext\model.onnx')) {
+        $layout['Panoptes'] += @('ext\model.onnx')
+        Write-Host 'Packaging ext\model.onnx unencrypted (PANOPTES_ML_EMBED_MODEL=OFF).' -ForegroundColor Yellow
+    }
+}
+
 # Only clear a folder this script created, never an arbitrary path passed as -OutDir
 if (Test-Path $OutDir) {
     if (-not (Test-Path (Join-Path $OutDir $marker))) {

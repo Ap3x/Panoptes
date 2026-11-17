@@ -31,3 +31,8 @@ speech_*
 .claude/*
 .wix/*
 build
+
+# PanoptesML: EMBER2024 test records and a local copy of the trained model (the build uses assets/ml/model.onnx)
+assets/ml/*/
+assets/ml/**/*.jsonl
+src/extensibility/PanoptesML/model.onnx

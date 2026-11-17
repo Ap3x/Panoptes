@@ -1,0 +1,9 @@
+{
+  "name": "panoptes-ml",
+  "version": "1.0.0",
+  "description": "PanoptesML only. Kept apart from the root vcpkg.json because ONNX Runtime needs a newer protobuf than the gRPC the rest of Panoptes is pinned to; this manifest installs into its own sub-build, so the other components are not affected",
+  "dependencies": [
+    "onnxruntime",
+    "grpc"
+  ]
+}

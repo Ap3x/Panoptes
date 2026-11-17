@@ -6,7 +6,10 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
 
-std::unique_ptr<PanoptesService::Stub> stub_;
+class PanoptesService_Stub_Holder {
+public:
+	std::unique_ptr<PanoptesService::Stub> Stub;
+};
 
 // Debug builds of the service run unelevated and publish the port under HKCU
 #ifdef _DEBUG
@@ -64,35 +67,34 @@ bool GetRegistryPortValue(DWORD& portValue) {
 
 /// @brief Constructor for the Panoptes Service Client
 PanoptesServiceClient::PanoptesServiceClient() {
-	DWORD SERVICE_PORT;
+	DWORD SERVICE_PORT = 0;
 	GetRegistryPortValue(SERVICE_PORT);
 	std::string server_url = "localhost:0" + std::to_string(SERVICE_PORT);
 	std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(server_url, grpc::InsecureChannelCredentials());
-	stub_ = PanoptesService::NewStub(channel);
+	m_stub = std::make_unique<PanoptesService_Stub_Holder>();
+	m_stub->Stub = PanoptesService::NewStub(channel);
 }
 
-/// @brief Send a request to the Panoptes Service to scan a PE file
-/// @param PePath The path to the PE file
-/// @param FileHash The hash of the PE file
-/// @param message The message to send to the Panoptes Service
-/// @return True if the request was sent successfully, false otherwise
-bool PanoptesServiceClient::QueuePeScan(std::string PePath, std::string FileHash, std::string& message) {
+bool PanoptesServiceClient::QueuePeScan(const std::string& PePath, const std::string& FileHash, bool Poll, ScanReply& Reply, std::string& Error) {
 	AckMessage reply;
-	ClientContext g_context;
+	ClientContext context;
+	// The service only queues the scans; it answers quickly
+	context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(30));
 
 	PeScanInfo request;
 	request.set_file_hash(FileHash);
 	request.set_portable_executable_path(PePath);
+	request.set_poll(Poll);
 
-	Status status = stub_->QueuePeScan(&g_context, request, &reply);
-
+	Status status = m_stub->Stub->QueuePeScan(&context, request, &reply);
 	if (!status.ok()) {
-		message = status.error_message();
+		Error = status.error_message();
 		return false;
 	}
-	else {
-		message = reply.message();
-	}
-
+	Reply.Results = reply.message();
+	Reply.FileHash = reply.file_hash();
+	Reply.Pending.assign(reply.pending_scans().begin(), reply.pending_scans().end());
 	return true;
 }
+
+PanoptesServiceClient::~PanoptesServiceClient() = default;

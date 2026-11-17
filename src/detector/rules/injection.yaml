@@ -74,3 +74,12 @@
   until:
     where: Event == "ProcessTerminated"
     by: PID
+
+# A remote operation on a process the hook could not identify, even after re-opening the handle
+# for query access. Every injection sequence joins on TargetProcessId, so none of them can see
+# these; and a handle that can't be queried is unusual for legitimate software
+- name: remote_target_unresolved
+  description: A process acted on another process through a handle whose target could not be identified
+  severity: medium
+  sequence:
+    - Source == "Hook" && Remote == true && TargetResolved == false

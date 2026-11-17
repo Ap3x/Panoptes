@@ -26,6 +26,7 @@ type ContainerType int32
 const (
 	ContainerType_CONTAINER_TYPE_NONE ContainerType = 0
 	ContainerType_CONTAINER_TYPE_YARA ContainerType = 30
+	ContainerType_CONTAINER_TYPE_ML   ContainerType = 31
 )
 
 // Enum value maps for ContainerType.
@@ -33,10 +34,12 @@ var (
 	ContainerType_name = map[int32]string{
 		0:  "CONTAINER_TYPE_NONE",
 		30: "CONTAINER_TYPE_YARA",
+		31: "CONTAINER_TYPE_ML",
 	}
 	ContainerType_value = map[string]int32{
 		"CONTAINER_TYPE_NONE": 0,
 		"CONTAINER_TYPE_YARA": 30,
+		"CONTAINER_TYPE_ML":   31,
 	}
 )
 
@@ -215,9 +218,15 @@ func (DetectionAction) EnumDescriptor() ([]byte, []int) {
 }
 
 type AckMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AckType       AckType                `protobuf:"varint,1,opt,name=ack_type,json=ackType,proto3,enum=AckType" json:"ack_type,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	AckType AckType                `protobuf:"varint,1,opt,name=ack_type,json=ackType,proto3,enum=AckType" json:"ack_type,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// QueuePeScan: the results still expected for the file, by their key in the stored result
+	// ("yara_scan", "ml_scan"). Empty once every running extension has reported
+	PendingScans []string `protobuf:"bytes,3,rep,name=pending_scans,json=pendingScans,proto3" json:"pending_scans,omitempty"`
+	// QueuePeScan: the hash the file's result is stored under, to poll with (the file may be gone
+	// by then: quarantined)
+	FileHash      string `protobuf:"bytes,4,opt,name=file_hash,json=fileHash,proto3" json:"file_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -262,6 +271,20 @@ func (x *AckMessage) GetAckType() AckType {
 func (x *AckMessage) GetMessage() string {
 	if x != nil {
 		return x.Message
+	}
+	return ""
+}
+
+func (x *AckMessage) GetPendingScans() []string {
+	if x != nil {
+		return x.PendingScans
+	}
+	return nil
+}
+
+func (x *AckMessage) GetFileHash() string {
+	if x != nil {
+		return x.FileHash
 	}
 	return ""
 }
@@ -394,6 +417,99 @@ func (x *ScanYara) GetSignature() *ScanSignature {
 	return nil
 }
 
+// A static PE scored by PanoptesML's ONNX model
+type ScanML struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Score          float32                `protobuf:"fixed32,1,opt,name=score,proto3" json:"score,omitempty"`         // the model's malicious probability, 0 to 1
+	Threshold      float32                `protobuf:"fixed32,2,opt,name=threshold,proto3" json:"threshold,omitempty"` // score at or above which the file counts as malicious
+	Malicious      bool                   `protobuf:"varint,3,opt,name=malicious,proto3" json:"malicious,omitempty"`
+	Model          string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`                                          // the model file's name
+	FeatureVersion uint32                 `protobuf:"varint,5,opt,name=feature_version,json=featureVersion,proto3" json:"feature_version,omitempty"` // layout of the feature vector the model was given
+	IsPe           bool                   `protobuf:"varint,6,opt,name=is_pe,json=isPe,proto3" json:"is_pe,omitempty"`                               // false: not a PE file, so not scored (the model is trained on PEs)
+	Error          string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`                                          // set when the file wasn't scored: why. score and malicious are then 0
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ScanML) Reset() {
+	*x = ScanML{}
+	mi := &file_panoptes_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScanML) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScanML) ProtoMessage() {}
+
+func (x *ScanML) ProtoReflect() protoreflect.Message {
+	mi := &file_panoptes_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScanML.ProtoReflect.Descriptor instead.
+func (*ScanML) Descriptor() ([]byte, []int) {
+	return file_panoptes_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ScanML) GetScore() float32 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+func (x *ScanML) GetThreshold() float32 {
+	if x != nil {
+		return x.Threshold
+	}
+	return 0
+}
+
+func (x *ScanML) GetMalicious() bool {
+	if x != nil {
+		return x.Malicious
+	}
+	return false
+}
+
+func (x *ScanML) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ScanML) GetFeatureVersion() uint32 {
+	if x != nil {
+		return x.FeatureVersion
+	}
+	return 0
+}
+
+func (x *ScanML) GetIsPe() bool {
+	if x != nil {
+		return x.IsPe
+	}
+	return false
+}
+
+func (x *ScanML) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type ContainerReply struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	PortableExecutablePath string                 `protobuf:"bytes,1,opt,name=portable_executable_path,json=portableExecutablePath,proto3" json:"portable_executable_path,omitempty"`
@@ -401,6 +517,7 @@ type ContainerReply struct {
 	// Types that are valid to be assigned to ContainerEventReply:
 	//
 	//	*ContainerReply_YaraScan
+	//	*ContainerReply_MlScan
 	ContainerEventReply isContainerReply_ContainerEventReply `protobuf_oneof:"container_event_reply"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -408,7 +525,7 @@ type ContainerReply struct {
 
 func (x *ContainerReply) Reset() {
 	*x = ContainerReply{}
-	mi := &file_panoptes_proto_msgTypes[3]
+	mi := &file_panoptes_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -420,7 +537,7 @@ func (x *ContainerReply) String() string {
 func (*ContainerReply) ProtoMessage() {}
 
 func (x *ContainerReply) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[3]
+	mi := &file_panoptes_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -433,7 +550,7 @@ func (x *ContainerReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerReply.ProtoReflect.Descriptor instead.
 func (*ContainerReply) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{3}
+	return file_panoptes_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ContainerReply) GetPortableExecutablePath() string {
@@ -466,6 +583,15 @@ func (x *ContainerReply) GetYaraScan() *ScanYara {
 	return nil
 }
 
+func (x *ContainerReply) GetMlScan() *ScanML {
+	if x != nil {
+		if x, ok := x.ContainerEventReply.(*ContainerReply_MlScan); ok {
+			return x.MlScan
+		}
+	}
+	return nil
+}
+
 type isContainerReply_ContainerEventReply interface {
 	isContainerReply_ContainerEventReply()
 }
@@ -474,7 +600,13 @@ type ContainerReply_YaraScan struct {
 	YaraScan *ScanYara `protobuf:"bytes,5,opt,name=yara_scan,json=yaraScan,proto3,oneof"`
 }
 
+type ContainerReply_MlScan struct {
+	MlScan *ScanML `protobuf:"bytes,6,opt,name=ml_scan,json=mlScan,proto3,oneof"`
+}
+
 func (*ContainerReply_YaraScan) isContainerReply_ContainerEventReply() {}
+
+func (*ContainerReply_MlScan) isContainerReply_ContainerEventReply() {}
 
 type ContainerInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -486,7 +618,7 @@ type ContainerInfo struct {
 
 func (x *ContainerInfo) Reset() {
 	*x = ContainerInfo{}
-	mi := &file_panoptes_proto_msgTypes[4]
+	mi := &file_panoptes_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -498,7 +630,7 @@ func (x *ContainerInfo) String() string {
 func (*ContainerInfo) ProtoMessage() {}
 
 func (x *ContainerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[4]
+	mi := &file_panoptes_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -511,7 +643,7 @@ func (x *ContainerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerInfo.ProtoReflect.Descriptor instead.
 func (*ContainerInfo) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{4}
+	return file_panoptes_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ContainerInfo) GetContainerType() ContainerType {
@@ -532,13 +664,16 @@ type PeScanInfo struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	PortableExecutablePath string                 `protobuf:"bytes,1,opt,name=portable_executable_path,json=portableExecutablePath,proto3" json:"portable_executable_path,omitempty"`
 	FileHash               string                 `protobuf:"bytes,2,opt,name=file_hash,json=fileHash,proto3" json:"file_hash,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// QueuePeScan: only report the stored result and the scans still running, for a scanner
+	// waiting on them. Starts no scan and shows no notification
+	Poll          bool `protobuf:"varint,3,opt,name=poll,proto3" json:"poll,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PeScanInfo) Reset() {
 	*x = PeScanInfo{}
-	mi := &file_panoptes_proto_msgTypes[5]
+	mi := &file_panoptes_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -550,7 +685,7 @@ func (x *PeScanInfo) String() string {
 func (*PeScanInfo) ProtoMessage() {}
 
 func (x *PeScanInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[5]
+	mi := &file_panoptes_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +698,7 @@ func (x *PeScanInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeScanInfo.ProtoReflect.Descriptor instead.
 func (*PeScanInfo) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{5}
+	return file_panoptes_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PeScanInfo) GetPortableExecutablePath() string {
@@ -580,6 +715,13 @@ func (x *PeScanInfo) GetFileHash() string {
 	return ""
 }
 
+func (x *PeScanInfo) GetPoll() bool {
+	if x != nil {
+		return x.Poll
+	}
+	return false
+}
+
 type HealthCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ping          bool                   `protobuf:"varint,1,opt,name=ping,proto3" json:"ping,omitempty"`
@@ -589,7 +731,7 @@ type HealthCheckRequest struct {
 
 func (x *HealthCheckRequest) Reset() {
 	*x = HealthCheckRequest{}
-	mi := &file_panoptes_proto_msgTypes[6]
+	mi := &file_panoptes_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -601,7 +743,7 @@ func (x *HealthCheckRequest) String() string {
 func (*HealthCheckRequest) ProtoMessage() {}
 
 func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[6]
+	mi := &file_panoptes_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -614,7 +756,7 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
 func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{6}
+	return file_panoptes_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *HealthCheckRequest) GetPing() bool {
@@ -633,7 +775,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_panoptes_proto_msgTypes[7]
+	mi := &file_panoptes_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -645,7 +787,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[7]
+	mi := &file_panoptes_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -658,7 +800,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{7}
+	return file_panoptes_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *HealthCheckResponse) GetPong() bool {
@@ -680,7 +822,7 @@ type DetectorHello struct {
 
 func (x *DetectorHello) Reset() {
 	*x = DetectorHello{}
-	mi := &file_panoptes_proto_msgTypes[8]
+	mi := &file_panoptes_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -692,7 +834,7 @@ func (x *DetectorHello) String() string {
 func (*DetectorHello) ProtoMessage() {}
 
 func (x *DetectorHello) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[8]
+	mi := &file_panoptes_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -705,7 +847,7 @@ func (x *DetectorHello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DetectorHello.ProtoReflect.Descriptor instead.
 func (*DetectorHello) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{8}
+	return file_panoptes_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DetectorHello) GetVersion() string {
@@ -725,10 +867,11 @@ func (x *DetectorHello) GetEventNames() []string {
 // One event, as the service logs it
 type DetectorEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Increments by one per event the service sends; a gap means the stream dropped events
+	// The event's "Seq" in pano.log. Increments by one per logged event; a gap means the stream
+	// dropped events
 	Sequence uint64 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	// FILETIME (100ns intervals since 1601-01-01 UTC). The log's "Time" field only has
-	// one-second resolution, which is too coarse for maxspan windows.
+	// FILETIME (100ns intervals since 1601-01-01 UTC). Finer than the log's "Time" field,
+	// which has milliseconds
 	Timestamp int64 `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	// The same JSON object written to pano.log, so rules use the log's field names and
 	// can be tested offline by replaying a log file
@@ -739,7 +882,7 @@ type DetectorEvent struct {
 
 func (x *DetectorEvent) Reset() {
 	*x = DetectorEvent{}
-	mi := &file_panoptes_proto_msgTypes[9]
+	mi := &file_panoptes_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +894,7 @@ func (x *DetectorEvent) String() string {
 func (*DetectorEvent) ProtoMessage() {}
 
 func (x *DetectorEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[9]
+	mi := &file_panoptes_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +907,7 @@ func (x *DetectorEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DetectorEvent.ProtoReflect.Descriptor instead.
 func (*DetectorEvent) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{9}
+	return file_panoptes_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DetectorEvent) GetSequence() uint64 {
@@ -796,7 +939,7 @@ type Detection struct {
 	Action         DetectionAction        `protobuf:"varint,4,opt,name=action,proto3,enum=DetectionAction" json:"action,omitempty"`
 	ProcessId      uint32                 `protobuf:"varint,5,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"` // process to act on
 	ImagePath      string                 `protobuf:"bytes,6,opt,name=image_path,json=imagePath,proto3" json:"image_path,omitempty"`
-	EventSequences []uint64               `protobuf:"varint,7,rep,packed,name=event_sequences,json=eventSequences,proto3" json:"event_sequences,omitempty"` // DetectorEvent.sequence of each event that matched
+	EventSequences []uint64               `protobuf:"varint,7,rep,packed,name=event_sequences,json=eventSequences,proto3" json:"event_sequences,omitempty"` // Seq of each event that matched, naming its line in pano.log
 	// FILETIME of the last matching event. process_id must have existed by then: the service
 	// refuses to act on a process created later, since its ID was reused after the match
 	Timestamp     int64 `protobuf:"varint,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
@@ -806,7 +949,7 @@ type Detection struct {
 
 func (x *Detection) Reset() {
 	*x = Detection{}
-	mi := &file_panoptes_proto_msgTypes[10]
+	mi := &file_panoptes_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -818,7 +961,7 @@ func (x *Detection) String() string {
 func (*Detection) ProtoMessage() {}
 
 func (x *Detection) ProtoReflect() protoreflect.Message {
-	mi := &file_panoptes_proto_msgTypes[10]
+	mi := &file_panoptes_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -831,7 +974,7 @@ func (x *Detection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Detection.ProtoReflect.Descriptor instead.
 func (*Detection) Descriptor() ([]byte, []int) {
-	return file_panoptes_proto_rawDescGZIP(), []int{10}
+	return file_panoptes_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Detection) GetRule() string {
@@ -894,11 +1037,13 @@ var File_panoptes_proto protoreflect.FileDescriptor
 
 const file_panoptes_proto_rawDesc = "" +
 	"\n" +
-	"\x0epanoptes.proto\"K\n" +
+	"\x0epanoptes.proto\"\x8d\x01\n" +
 	"\n" +
 	"AckMessage\x12#\n" +
 	"\back_type\x18\x01 \x01(\x0e2\b.AckTypeR\aackType\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xa3\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12#\n" +
+	"\rpending_scans\x18\x03 \x03(\tR\fpendingScans\x12\x1b\n" +
+	"\tfile_hash\x18\x04 \x01(\tR\bfileHash\"\xa3\x01\n" +
 	"\rScanSignature\x12\x16\n" +
 	"\x06signed\x18\x01 \x01(\bR\x06signed\x12\x18\n" +
 	"\atrusted\x18\x02 \x01(\bR\atrusted\x12%\n" +
@@ -907,19 +1052,29 @@ const file_panoptes_proto_rawDesc = "" +
 	"\ftrust_status\x18\x05 \x01(\tR\vtrustStatus\"_\n" +
 	"\bScanYara\x12%\n" +
 	"\x0edetected_rules\x18\x01 \x03(\tR\rdetectedRules\x12,\n" +
-	"\tsignature\x18\x02 \x01(\v2\x0e.ScanSignatureR\tsignature\"\xaa\x01\n" +
+	"\tsignature\x18\x02 \x01(\v2\x0e.ScanSignatureR\tsignature\"\xc4\x01\n" +
+	"\x06ScanML\x12\x14\n" +
+	"\x05score\x18\x01 \x01(\x02R\x05score\x12\x1c\n" +
+	"\tthreshold\x18\x02 \x01(\x02R\tthreshold\x12\x1c\n" +
+	"\tmalicious\x18\x03 \x01(\bR\tmalicious\x12\x14\n" +
+	"\x05model\x18\x04 \x01(\tR\x05model\x12'\n" +
+	"\x0ffeature_version\x18\x05 \x01(\rR\x0efeatureVersion\x12\x13\n" +
+	"\x05is_pe\x18\x06 \x01(\bR\x04isPe\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\"\xce\x01\n" +
 	"\x0eContainerReply\x128\n" +
 	"\x18portable_executable_path\x18\x01 \x01(\tR\x16portableExecutablePath\x12\x1b\n" +
 	"\tfile_hash\x18\x02 \x01(\tR\bfileHash\x12(\n" +
-	"\tyara_scan\x18\x05 \x01(\v2\t.ScanYaraH\x00R\byaraScanB\x17\n" +
+	"\tyara_scan\x18\x05 \x01(\v2\t.ScanYaraH\x00R\byaraScan\x12\"\n" +
+	"\aml_scan\x18\x06 \x01(\v2\a.ScanMLH\x00R\x06mlScanB\x17\n" +
 	"\x15container_event_reply\"c\n" +
 	"\rContainerInfo\x125\n" +
 	"\x0econtainer_type\x18\x01 \x01(\x0e2\x0e.ContainerTypeR\rcontainerType\x12\x1b\n" +
-	"\tgrpc_port\x18\x02 \x01(\rR\bgrpcPort\"c\n" +
+	"\tgrpc_port\x18\x02 \x01(\rR\bgrpcPort\"w\n" +
 	"\n" +
 	"PeScanInfo\x128\n" +
 	"\x18portable_executable_path\x18\x01 \x01(\tR\x16portableExecutablePath\x12\x1b\n" +
-	"\tfile_hash\x18\x02 \x01(\tR\bfileHash\"(\n" +
+	"\tfile_hash\x18\x02 \x01(\tR\bfileHash\x12\x12\n" +
+	"\x04poll\x18\x03 \x01(\bR\x04poll\"(\n" +
 	"\x12HealthCheckRequest\x12\x12\n" +
 	"\x04ping\x18\x01 \x01(\bR\x04ping\")\n" +
 	"\x13HealthCheckResponse\x12\x12\n" +
@@ -942,10 +1097,11 @@ const file_panoptes_proto_rawDesc = "" +
 	"\n" +
 	"image_path\x18\x06 \x01(\tR\timagePath\x12'\n" +
 	"\x0fevent_sequences\x18\a \x03(\x04R\x0eeventSequences\x12\x1c\n" +
-	"\ttimestamp\x18\b \x01(\x03R\ttimestamp*A\n" +
+	"\ttimestamp\x18\b \x01(\x03R\ttimestamp*X\n" +
 	"\rContainerType\x12\x17\n" +
 	"\x13CONTAINER_TYPE_NONE\x10\x00\x12\x17\n" +
-	"\x13CONTAINER_TYPE_YARA\x10\x1e*\"\n" +
+	"\x13CONTAINER_TYPE_YARA\x10\x1e\x12\x15\n" +
+	"\x11CONTAINER_TYPE_ML\x10\x1f*\"\n" +
 	"\aAckType\x12\n" +
 	"\n" +
 	"\x06FAILED\x10\x00\x12\v\n" +
@@ -983,7 +1139,7 @@ func file_panoptes_proto_rawDescGZIP() []byte {
 }
 
 var file_panoptes_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_panoptes_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_panoptes_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_panoptes_proto_goTypes = []any{
 	(ContainerType)(0),          // 0: ContainerType
 	(AckType)(0),                // 1: AckType
@@ -992,41 +1148,43 @@ var file_panoptes_proto_goTypes = []any{
 	(*AckMessage)(nil),          // 4: AckMessage
 	(*ScanSignature)(nil),       // 5: ScanSignature
 	(*ScanYara)(nil),            // 6: ScanYara
-	(*ContainerReply)(nil),      // 7: ContainerReply
-	(*ContainerInfo)(nil),       // 8: ContainerInfo
-	(*PeScanInfo)(nil),          // 9: PeScanInfo
-	(*HealthCheckRequest)(nil),  // 10: HealthCheckRequest
-	(*HealthCheckResponse)(nil), // 11: HealthCheckResponse
-	(*DetectorHello)(nil),       // 12: DetectorHello
-	(*DetectorEvent)(nil),       // 13: DetectorEvent
-	(*Detection)(nil),           // 14: Detection
+	(*ScanML)(nil),              // 7: ScanML
+	(*ContainerReply)(nil),      // 8: ContainerReply
+	(*ContainerInfo)(nil),       // 9: ContainerInfo
+	(*PeScanInfo)(nil),          // 10: PeScanInfo
+	(*HealthCheckRequest)(nil),  // 11: HealthCheckRequest
+	(*HealthCheckResponse)(nil), // 12: HealthCheckResponse
+	(*DetectorHello)(nil),       // 13: DetectorHello
+	(*DetectorEvent)(nil),       // 14: DetectorEvent
+	(*Detection)(nil),           // 15: Detection
 }
 var file_panoptes_proto_depIdxs = []int32{
 	1,  // 0: AckMessage.ack_type:type_name -> AckType
 	5,  // 1: ScanYara.signature:type_name -> ScanSignature
 	6,  // 2: ContainerReply.yara_scan:type_name -> ScanYara
-	0,  // 3: ContainerInfo.container_type:type_name -> ContainerType
-	2,  // 4: Detection.severity:type_name -> DetectionSeverity
-	3,  // 5: Detection.action:type_name -> DetectionAction
-	8,  // 6: PanoptesService.Hello:input_type -> ContainerInfo
-	7,  // 7: PanoptesService.ScanResults:input_type -> ContainerReply
-	9,  // 8: PanoptesService.QueuePeScan:input_type -> PeScanInfo
-	10, // 9: PanoptesService.HealthCheck:input_type -> HealthCheckRequest
-	12, // 10: PanoptesService.SubscribeEvents:input_type -> DetectorHello
-	14, // 11: PanoptesService.ReportDetection:input_type -> Detection
-	9,  // 12: PanoptesExtensibility.PEScan:input_type -> PeScanInfo
-	4,  // 13: PanoptesService.Hello:output_type -> AckMessage
-	4,  // 14: PanoptesService.ScanResults:output_type -> AckMessage
-	4,  // 15: PanoptesService.QueuePeScan:output_type -> AckMessage
-	11, // 16: PanoptesService.HealthCheck:output_type -> HealthCheckResponse
-	13, // 17: PanoptesService.SubscribeEvents:output_type -> DetectorEvent
-	4,  // 18: PanoptesService.ReportDetection:output_type -> AckMessage
-	4,  // 19: PanoptesExtensibility.PEScan:output_type -> AckMessage
-	13, // [13:20] is the sub-list for method output_type
-	6,  // [6:13] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	7,  // 3: ContainerReply.ml_scan:type_name -> ScanML
+	0,  // 4: ContainerInfo.container_type:type_name -> ContainerType
+	2,  // 5: Detection.severity:type_name -> DetectionSeverity
+	3,  // 6: Detection.action:type_name -> DetectionAction
+	9,  // 7: PanoptesService.Hello:input_type -> ContainerInfo
+	8,  // 8: PanoptesService.ScanResults:input_type -> ContainerReply
+	10, // 9: PanoptesService.QueuePeScan:input_type -> PeScanInfo
+	11, // 10: PanoptesService.HealthCheck:input_type -> HealthCheckRequest
+	13, // 11: PanoptesService.SubscribeEvents:input_type -> DetectorHello
+	15, // 12: PanoptesService.ReportDetection:input_type -> Detection
+	10, // 13: PanoptesExtensibility.PEScan:input_type -> PeScanInfo
+	4,  // 14: PanoptesService.Hello:output_type -> AckMessage
+	4,  // 15: PanoptesService.ScanResults:output_type -> AckMessage
+	4,  // 16: PanoptesService.QueuePeScan:output_type -> AckMessage
+	12, // 17: PanoptesService.HealthCheck:output_type -> HealthCheckResponse
+	14, // 18: PanoptesService.SubscribeEvents:output_type -> DetectorEvent
+	4,  // 19: PanoptesService.ReportDetection:output_type -> AckMessage
+	4,  // 20: PanoptesExtensibility.PEScan:output_type -> AckMessage
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_panoptes_proto_init() }
@@ -1034,8 +1192,9 @@ func file_panoptes_proto_init() {
 	if File_panoptes_proto != nil {
 		return
 	}
-	file_panoptes_proto_msgTypes[3].OneofWrappers = []any{
+	file_panoptes_proto_msgTypes[4].OneofWrappers = []any{
 		(*ContainerReply_YaraScan)(nil),
+		(*ContainerReply_MlScan)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1043,7 +1202,7 @@ func file_panoptes_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panoptes_proto_rawDesc), len(file_panoptes_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
